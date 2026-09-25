@@ -76,6 +76,59 @@ class Track:
                 return self.year
 
 
+class Collision(StrEnum):
+    """Wat te doen als het doelbestand al bestaat of door een ander plan wordt geclaimd."""
+
+    SKIP = "skip"
+    SUFFIX = "suffix"
+    MARK_DUPLICATE = "mark_duplicate"
+
+
+class PlanWarning(StrEnum):
+    EXISTS = "exists"  # doelbestand bestaat al op schijf
+    DUPLICATE_TARGET = "duplicate_target"  # twee tracks krijgen hetzelfde doel
+    SUFFIXED = "suffixed"  # botsing opgelost met " (2)"
+    CASE_ONLY = "case_only"  # alleen hoofdletters wijzigen (twee-staps-rename)
+    PATH_TOO_LONG = "path_too_long"  # > 259 tekens
+    INVALID_NAME = "invalid_name"  # ongeldige tekens / leeg / gereserveerd
+    TAGS_ONLY = "tags_only"  # naam blijft gelijk, alleen tags bijwerken
+
+
+@dataclass(frozen=True, slots=True)
+class TagValues:
+    """Te schrijven tags. ``None`` betekent: tag verwijderen."""
+
+    artist: str | None
+    title: str | None
+    date: str | None
+
+    def to_dict(self) -> dict[str, str | None]:
+        return {"artist": self.artist, "title": self.title, "date": self.date}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, str | None]) -> TagValues:
+        return cls(data.get("artist"), data.get("title"), data.get("date"))
+
+
+@dataclass(frozen=True, slots=True)
+class RenamePlan:
+    track_id: int
+    src: Path
+    dst: Path
+    case_only: bool = False
+    warnings: tuple[PlanWarning, ...] = ()
+    collision: Collision | None = None  # gekozen afhandeling als er een botsing was
+    tags: TagValues | None = None  # tags om te schrijven (None = tags niet aanraken)
+    blocked: bool = False  # kan niet worden uitgevoerd (ongeldig of overgeslagen botsing)
+    changed: bool = True  # False: niet bewerkt, alleen genormaliseerd/verplaatst
+    note: str = ""  # leesbare uitleg van de waarschuwingen
+
+    @property
+    def renames(self) -> bool:
+        # Als strings vergelijken: WindowsPath-gelijkheid negeert hoofdletters.
+        return os.fspath(self.src) != os.fspath(self.dst)
+
+
 @dataclass(frozen=True, slots=True)
 class PendingChange:
     """Eén veldwijziging in het geheugen; ``old`` en ``new`` zijn effectieve waarden."""

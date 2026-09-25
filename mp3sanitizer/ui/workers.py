@@ -10,7 +10,9 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, Signal
 
-from mp3sanitizer.core.models import AudioInfo, Track
+from mp3sanitizer.core.batch import run_save, run_undo
+from mp3sanitizer.core.journal import Journal, JournalStore
+from mp3sanitizer.core.models import AudioInfo, RenamePlan, Track
 from mp3sanitizer.core.scanner import iter_audio_files, track_from_path
 from mp3sanitizer.core.tags import read_audio_info
 
@@ -109,3 +111,54 @@ class TagWorker(Worker):
         if batch:
             self.signals.batch.emit(batch)
         self.signals.progress.emit(total if not self.cancelled else 0, total)
+
+
+class SaveWorker(Worker):
+    """Voert een opslaan-batch uit. ``batch`` levert ``(ExecResult, Journal)``."""
+
+    def __init__(
+        self,
+        plans: Sequence[RenamePlan],
+        store: JournalStore,
+        root: Path,
+        app_version: str,
+        cleanup_empty_dirs: bool,
+    ) -> None:
+        super().__init__()
+        self.plans = list(plans)
+        self.store = store
+        self.root = root
+        self.app_version = app_version
+        self.cleanup_empty_dirs = cleanup_empty_dirs
+
+    def work(self) -> None:
+        result = run_save(
+            self.plans,
+            self.store,
+            self.root,
+            self.app_version,
+            cleanup_empty_dirs=self.cleanup_empty_dirs,
+            progress=self.signals.progress.emit,
+            cancelled=lambda: self.cancelled,
+        )
+        self.signals.batch.emit(result)
+
+
+class UndoWorker(Worker):
+    """Draait een batch terug. ``batch`` levert ``(ExecResult, Journal)``."""
+
+    def __init__(self, target: Journal, store: JournalStore, app_version: str) -> None:
+        super().__init__()
+        self.target = target
+        self.store = store
+        self.app_version = app_version
+
+    def work(self) -> None:
+        result = run_undo(
+            self.target,
+            self.store,
+            self.app_version,
+            progress=self.signals.progress.emit,
+            cancelled=lambda: self.cancelled,
+        )
+        self.signals.batch.emit(result)

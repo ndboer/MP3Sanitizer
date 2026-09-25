@@ -32,13 +32,25 @@ from PySide6.QtWidgets import (
 )
 
 from mp3sanitizer import __version__
-from mp3sanitizer.core.models import Field
+from mp3sanitizer.core.executor import ExecResult
+from mp3sanitizer.core.journal import Journal, JournalStore
+from mp3sanitizer.core.models import Field, ParseStatus, RenamePlan
+from mp3sanitizer.core.paths import data_dir
+from mp3sanitizer.core.planner import DecadeStyle, FolderTemplate, PlanInput, folder_for_year
 from mp3sanitizer.core.settings import SettingsStore
 from mp3sanitizer.ui.bulk_edit_dialog import BulkEditDialog
 from mp3sanitizer.ui.delegates import TrackEditDelegate
 from mp3sanitizer.ui.proxy_model import QuickFilter, TrackFilterProxy
+from mp3sanitizer.ui.save_dialog import SavePreviewDialog
 from mp3sanitizer.ui.track_model import FIELD_COLUMN, Col, TrackTableModel
-from mp3sanitizer.ui.workers import ScanWorker, TagWorker, Worker, WorkerSignals
+from mp3sanitizer.ui.workers import (
+    SaveWorker,
+    ScanWorker,
+    TagWorker,
+    UndoWorker,
+    Worker,
+    WorkerSignals,
+)
 
 log = logging.getLogger(__name__)
 
@@ -61,11 +73,20 @@ _DEFAULT_WIDTHS = {
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, store: SettingsStore, pool: QThreadPool | None = None) -> None:
+    def __init__(
+        self,
+        store: SettingsStore,
+        pool: QThreadPool | None = None,
+        journal_store: JournalStore | None = None,
+    ) -> None:
         super().__init__()
         self._store = store
         self._settings = store.settings
         self._pool = pool or QThreadPool.globalInstance()
+        self.journals = journal_store or JournalStore(data_dir() / "journal")
+        self._batch_worker: SaveWorker | UndoWorker | None = None
+        self.last_report = ""
+        self._reload_after_batch = False
         self._root: Path | None = None
         # Actieve workers per signals-object; oude workers blijven bewaard tot ze klaar zijn.
         self._workers: dict[WorkerSignals, Worker] = {}
@@ -99,6 +120,7 @@ class MainWindow(QMainWindow):
         self._update_title()
         self._update_stats()
         self._set_busy(False)
+        self._apply_folder_rule()
 
         if self._settings.last_root and Path(self._settings.last_root).is_dir():
             QTimer.singleShot(0, lambda: self.start_scan(Path(self._settings.last_root or "")))
@@ -167,6 +189,11 @@ class MainWindow(QMainWindow):
         self.act_revert.triggered.connect(self.revert_selected)
         self.act_revert_all = QAction("Alle wijzigingen &verwerpen", self)
         self.act_revert_all.triggered.connect(self.revert_all)
+        self.act_save = QAction("&Opslaan…", self, shortcut=QKeySequence.StandardKey.Save)
+        self.act_save.setToolTip("Hernoemen/verplaatsen via een preview (Ctrl+S)")
+        self.act_save.triggered.connect(self.save_changes)
+        self.act_undo_batch = QAction("Laatste batch &terugdraaien…", self)
+        self.act_undo_batch.triggered.connect(self.undo_last_batch)
         for act in (self.act_edit, self.act_bulk, self.act_swap, self.act_revert):
             # Alleen actief als de tabel (of een editor daarin) de focus heeft, zodat
             # bijv. Ctrl+W niet vanuit het zoekveld een wissel uitvoert.
@@ -222,6 +249,10 @@ class MainWindow(QMainWindow):
         m_file = mb.addMenu("&Bestand")
         m_file.addAction(self.act_open)
         m_file.addAction(self.act_reload)
+        m_file.addSeparator()
+        m_file.addAction(self.act_save)
+        m_file.addAction(self.act_undo_batch)
+        m_file.addSeparator()
         m_file.addAction(self.act_cancel)
         m_file.addSeparator()
         m_file.addAction(self.act_quit)
@@ -452,7 +483,15 @@ class MainWindow(QMainWindow):
         return answer == QMessageBox.StandardButton.Discard
 
     # --- scannen -------------------------------------------------------------------------
+    def _batch_running(self) -> bool:
+        if self._batch_worker is not None:
+            self._flash("Er wordt nog opgeslagen of teruggedraaid; even geduld", 6000)
+            return True
+        return False
+
     def choose_folder(self) -> None:
+        if self._batch_running():
+            return
         if not self.confirm_discard("Een andere map openen"):
             return
         start = str(self._root) if self._root else (self._settings.last_root or "")
@@ -461,6 +500,8 @@ class MainWindow(QMainWindow):
             self.start_scan(Path(folder))
 
     def reload(self) -> None:
+        if self._batch_running():
+            return
         if self._root is not None and self.confirm_discard("Herladen"):
             self.start_scan(self._root)
 
@@ -552,6 +593,147 @@ class MainWindow(QMainWindow):
             self._flash("Inlezen van tags geannuleerd", 5000)
         self._schedule_stats()
 
+    # --- opslaan ------------------------------------------------------------------------
+    def _apply_folder_rule(self) -> None:
+        s = self._settings
+        template = FolderTemplate(s.folder_template)
+        if template is FolderTemplate.NONE:
+            self.model.set_folder_rule(None)
+            return
+        style, unknown = DecadeStyle(s.decade_style), s.unknown_year_folder
+        self.model.set_folder_rule(lambda year: folder_for_year(year, template, style, unknown))
+
+    def plan_inputs(self) -> list[PlanInput]:
+        """Invoer voor de planner: alle tracks met een bruikbare naam of een wijziging."""
+        m, e = self.model, self.model.edits
+        inputs = []
+        for t in m.tracks:
+            changed = e.is_changed(t.id)
+            if t.parse_status is ParseStatus.ERROR and not changed:
+                continue
+            inputs.append(
+                PlanInput(
+                    t.id,
+                    t.path,
+                    e.artist(t.id),
+                    e.title(t.id),
+                    e.year(t.id),
+                    changed,
+                    bool(m.mismatches(m.row_of(t.id))),
+                )
+            )
+        return inputs
+
+    def _ensure_idle(self) -> bool:
+        if self.busy:
+            self._flash("Wacht tot de lopende taak klaar is, of annuleer die (Esc)", 6000)
+            return False
+        return True
+
+    def save_changes(self) -> None:
+        if self._root is None or not self._ensure_idle():
+            return
+        dialog = SavePreviewDialog(self.plan_inputs(), self._root, self._settings, self)
+        if not dialog.exec():
+            return
+        dialog.store_settings(self._settings)
+        self._apply_folder_rule()
+        self.model.flag_duplicates(dialog.duplicate_ids())
+        self.start_save(dialog.selected_plans(), dialog.cleanup.isChecked())
+
+    def start_save(self, plans: list[RenamePlan], cleanup_empty_dirs: bool) -> None:
+        assert self._root is not None
+        if not plans:
+            return
+        worker = SaveWorker(plans, self.journals, self._root, __version__, cleanup_empty_dirs)
+        self._start_batch(worker, f"Opslaan ({len(plans)})…", len(plans))
+
+    def undo_last_batch(self) -> None:
+        if not self._ensure_idle():
+            return
+        target = self.journals.latest_undoable()
+        if target is None:
+            QMessageBox.information(self, APP_TITLE, "Er is geen batch om terug te draaien.")
+            return
+        answer = QMessageBox.question(
+            self,
+            APP_TITLE,
+            f"Batch van {target.created.replace('T', ' ')} terugdraaien?\n\n"
+            f"{target.ok_count} bewerkingen, uitgevoerd met Mp3Sanitizer {target.app_version}.\n"
+            "De bestanden krijgen hun oude naam en map terug; bijgewerkte tags worden hersteld.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        if not self.confirm_discard("Na het terugdraaien wordt de map opnieuw ingelezen. Doorgaan"):
+            return
+        self.start_undo(target)
+
+    def start_undo(self, target: Journal) -> None:
+        worker = UndoWorker(target, self.journals, __version__)
+        self._start_batch(worker, "Terugdraaien…", target.ok_count)
+
+    def _start_batch(self, worker: SaveWorker | UndoWorker, text: str, total: int) -> None:
+        worker.signals.progress.connect(self._on_batch_progress)
+        worker.signals.batch.connect(self._on_batch_result)
+        worker.signals.finished.connect(self._on_batch_finished)
+        self._batch_worker = worker
+        self.progress.setRange(0, max(total, 1))
+        self.progress.setValue(0)
+        self._set_busy(True, text)
+        self._start(worker)
+
+    @Slot(int, int)
+    def _on_batch_progress(self, done: int, total: int) -> None:
+        if self._is_current(self._batch_worker):
+            self.progress.setRange(0, max(total, 1))
+            self.progress.setValue(done)
+
+    @Slot(object)
+    def _on_batch_result(self, payload: object) -> None:
+        worker = self._batch_worker
+        if not self._is_current(worker):
+            return
+        result, journal = payload  # type: ignore[misc]
+        if isinstance(worker, SaveWorker):
+            self.model.apply_saved([(m.track_id, m.dst) for m in result.moved], result.tagged)
+            self.undo_stack.clear()  # de commando's verwijzen naar de oude originele waarden
+            self.report_batch(result, journal, "Opgeslagen")
+        else:
+            self.report_batch(result, journal, "Teruggedraaid")
+            self._reload_after_batch = True  # pas herladen als de worker helemaal klaar is
+
+    @Slot(bool)
+    def _on_batch_finished(self, _cancelled: bool) -> None:
+        if self._is_current(self._batch_worker):
+            self._batch_worker = None
+            self._set_busy(False)
+            if self._reload_after_batch and self._root is not None:
+                self._reload_after_batch = False
+                self.start_scan(self._root)
+
+    def report_batch(self, result: ExecResult, journal: Journal, verb: str) -> None:
+        moved, tagged, failed = len(result.moved), len(result.tagged), len(result.failures)
+        parts = [f"{verb}: {moved} bestanden hernoemd/verplaatst"]
+        if tagged:
+            parts.append(f"{tagged} getagd")
+        if result.removed_dirs:
+            parts.append(f"{len(result.removed_dirs)} lege mappen opgeruimd")
+        if result.cancelled:
+            parts.append("geannuleerd")
+        summary = ", ".join(parts)
+        self.last_report = summary
+        log.info("%s (batch %s, %d fouten)", summary, journal.batch_id, failed)
+        if not failed:
+            self._flash(summary, 8000)
+            return
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle(APP_TITLE)
+        box.setText(f"{summary}.\n\n{failed} bestanden konden niet worden verwerkt.")
+        box.setInformativeText(f"Journaal: {self.journals.log_path(journal.batch_id)}")
+        box.setDetailedText("\n".join(f"{f.path}: {f.message}" for f in result.failures))
+        box.exec()
+
     @Slot(str)
     def _on_worker_error(self, message: str) -> None:
         self._flash(f"Fout: {message}", 10000)
@@ -582,6 +764,12 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(parent or self, "Instellingen", msg)
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self._batch_worker is not None:
+            QMessageBox.information(
+                self, APP_TITLE, "Er loopt nog een batch. Wacht tot die klaar is of annuleer (Esc)."
+            )
+            event.ignore()
+            return
         if not self.confirm_discard("Afsluiten"):
             event.ignore()
             return

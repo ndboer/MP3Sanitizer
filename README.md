@@ -33,10 +33,11 @@ De versie komt uit de Git-tag (hatch-vcs). Na het wisselen van tag of branch:
 | Wissel artiest ⇄ titel                  | Ctrl+W             |
 | Wijzigingen van selectie terugdraaien   | Ctrl+R             |
 | Ongedaan maken / opnieuw                | Ctrl+Z / Ctrl+Y    |
+| Opslaan (altijd via preview)            | Ctrl+S             |
 | Lopende taak annuleren                  | Esc                |
 
 Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zonder jaar,
-5 Tag-mismatch, 6 Ongeldige namen.
+5 Tag-mismatch, 6 Ongeldige namen, 7 Verkeerde jaarmap.
 
 - De bestandsnaam wordt gesplitst op de **eerste** ` - ` (ook en-/em-dash). Een jaar `(dddd)` aan
   het eind telt alleen als het tussen 1900 en volgend jaar ligt.
@@ -52,7 +53,7 @@ Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zo
 
 - Artiest, Titel en Jaar zijn te bewerken (F2 of dubbelklik; F2 op een andere kolom bewerkt de
   artiest). Rechtsklik op een rij opent hetzelfde menu als **Bewerken**.
-- Wijzigingen blijven in het geheugen tot je ze opslaat (volgt in 0.3) en zijn geel gemarkeerd.
+- Wijzigingen blijven in het geheugen tot je ze opslaat en zijn geel gemarkeerd.
   De tooltip toont de originele waarde; de Status-tooltip de nieuwe bestandsnaam.
 - Ongeldige namen worden rood gemarkeerd: tekens die Windows niet toestaat (`< > : " / \ | ? *`),
   of een lege artiest/titel. Een jaar moet tussen 1900 en volgend jaar liggen; ongeldige invoer
@@ -61,6 +62,29 @@ Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zo
   hersorteren.
 - Bij openen van een andere map, herladen of afsluiten met openstaande wijzigingen vraagt de app
   eerst om bevestiging.
+
+### Opslaan
+
+**Bestand → Opslaan…** (Ctrl+S) opent altijd eerst een preview met per bestand oud → nieuw pad,
+de gewijzigde delen gemarkeerd, en een checkbox (spatie schakelt de geselecteerde regels).
+
+- Doelnaam: `<Artiest> - <Titel> (<Jaar>).<ext>`, zonder jaar `<Artiest> - <Titel>.<ext>`.
+- Doelmap: niet verplaatsen, jaarmap (`1985\`) of decenniummap (`1980-1989\` of `80s\`; vanaf
+  2000 `2000s\`). Tracks zonder jaar gaan naar een instelbare map (standaard `_Onbekend\`).
+- "Ook niet-bewerkte tracks meenemen" normaliseert ook namen die je niet hebt bewerkt en zet
+  tracks in de juiste jaarmap.
+- Bestaande bestanden worden **nooit** overschreven. Bij een botsing kies je: overslaan, suffix
+  `" (2)"` of als duplicaat markeren. Naamwijzigingen die alleen hoofdletters betreffen, lopen via
+  een tijdelijke naam (Windows ziet `a.mp3` en `A.mp3` als hetzelfde bestand).
+- Waarschuwingen voor paden langer dan 260 tekens; ongeldige namen zijn niet aan te vinken.
+- Optioneel: tags (artiest, titel, jaar) bijwerken en lege mappen opruimen.
+- Een fout bij één bestand stopt de batch niet; na afloop volgt een overzicht.
+- Na opslaan wordt de undo-geschiedenis (Ctrl+Z) gewist: de opgeslagen namen zijn het nieuwe
+  uitgangspunt. Terugdraaien op schijf gaat via **Bestand → Laatste batch terugdraaien…**.
+
+Elke batch krijgt een journaal in `%LOCALAPPDATA%\Mp3Sanitizer\journal\`: `<batch>.json`
+(met appversie, gebruikt voor terugdraaien) en `<batch>.log` (leesbaar, wordt tijdens het
+uitvoeren bijgeschreven).
 
 Instellingen staan in `%APPDATA%\Mp3Sanitizer\settings.json`, het logbestand in
 `%LOCALAPPDATA%\Mp3Sanitizer\logs\`.

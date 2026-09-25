@@ -7,6 +7,23 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-25
+
+### Added
+- Opslaan via een preview (Ctrl+S): oud → nieuw pad met gemarkeerde verschillen (difflib,
+  per woord), checkbox per regel, alles/niets selecteren, filter en "alleen regels met
+  opmerkingen".
+- Hernoemen naar `<Artiest> - <Titel> (<Jaar>).<ext>` en optioneel verplaatsen naar een jaar-
+  of decenniummap; instelbare map voor tracks zonder jaar.
+- Botsingen worden nooit overschreven: overslaan, suffix " (2)" of als duplicaat markeren.
+- Case-only renames en naamruil/ketens (A→B, B→A) via tijdelijke namen in twee stappen.
+- Waarschuwingen voor paden > 260 tekens en ongeldige namen (niet uitvoerbaar).
+- Optioneel tags bijwerken (mutagen) en lege mappen opruimen.
+- Uitvoeren op de achtergrond met voortgang en annuleren; fouten per bestand in het resultaat.
+- Journaal per batch (JSON met appversie + leesbaar logbestand) en "Laatste batch
+  terugdraaien", inclusief het herstellen van tags en het opruimen van aangemaakte mappen.
+- Snelfilter "Verkeerde jaarmap" (Ctrl+7) en duplicaatmarkering in de Status-kolom.
+
 ## [0.2.0] - 2026-09-25
 
 ### Added

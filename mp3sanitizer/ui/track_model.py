@@ -9,15 +9,24 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 from enum import IntEnum
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPersistentModelIndex, Qt, Signal
 from PySide6.QtGui import QColor, QUndoStack
 
 from mp3sanitizer.core.edits import EditState
-from mp3sanitizer.core.models import AudioInfo, Field, FieldValue, ParseStatus, PendingChange, Track
+from mp3sanitizer.core.models import (
+    AudioInfo,
+    Field,
+    FieldValue,
+    ParseStatus,
+    PendingChange,
+    TagValues,
+    Track,
+)
 from mp3sanitizer.core.normalize import DEFAULT_ARTICLES, fold, natural_key, sort_key
-from mp3sanitizer.core.parser import format_stem
+from mp3sanitizer.core.parser import format_stem, parse_filename
 from mp3sanitizer.core.tags import tag_mismatches
 from mp3sanitizer.core.validate import Issue, YearError, parse_year_input, text_issues
 from mp3sanitizer.ui.undo_commands import EditCommand
@@ -128,6 +137,7 @@ def status_text(
     invalid: bool,
     has_year: bool,
     mismatches: Sequence[Field] = (),
+    duplicate: bool = False,
 ) -> str:
     if changed:
         text = "Gewijzigd · ongeldig" if invalid else "Gewijzigd"
@@ -139,6 +149,8 @@ def status_text(
         text = "Geen jaar"
     else:
         text = "OK"
+    if duplicate:
+        text += " · duplicaat"
     return text + " · tags ≠" if mismatches else text
 
 
@@ -159,6 +171,10 @@ class TrackTableModel(QAbstractTableModel):
         self._search_keys: list[str] = []
         self._mismatches: list[tuple[Field, ...]] = []
         self._issues: list[Issues] = []
+        self._misplaced: list[bool] = []
+        # Verwachte relatieve map voor een jaar (None = niet verplaatsen); zie set_folder_rule.
+        self._folder_rule: Callable[[int | None], str | None] | None = None
+        self.duplicate_flags: set[int] = set()  # track-ids, gemarkeerd bij een botsing
         # _order[rij] = track-id; _rows[track-id] = rij
         self._order: list[int] = []
         self._rows: list[int] = []
@@ -192,6 +208,9 @@ class TrackTableModel(QAbstractTableModel):
     def mismatches(self, row: int) -> tuple[Field, ...]:
         return self._mismatches[self._order[row]]
 
+    def is_misplaced(self, row: int) -> bool:
+        return self._misplaced[self._order[row]]
+
     def search_key(self, row: int) -> str:
         """Gevouwen 'artiest\\0titel\\0bestandsnaam' voor het zoekfilter."""
         return self._search_keys[self._order[row]]
@@ -220,9 +239,11 @@ class TrackTableModel(QAbstractTableModel):
             self._search_keys,
             self._mismatches,
             self._issues,
+            self._misplaced,
         ):
             cache.clear()
         self.edits.clear()
+        self.duplicate_flags.clear()
         self.endResetModel()
 
     def append_tracks(self, tracks: Sequence[Track], *, resort: bool = True) -> None:
@@ -246,6 +267,7 @@ class TrackTableModel(QAbstractTableModel):
             self._search_keys.append("")
             self._mismatches.append(())
             self._issues.append(_NO_ISSUES)
+            self._misplaced.append(False)
             self._recompute(track.id)
         self.endInsertRows()
         if resort:
@@ -274,7 +296,54 @@ class TrackTableModel(QAbstractTableModel):
             if found:
                 issues[field] = found
         self._issues[tid] = issues or _NO_ISSUES
+        self._misplaced[tid] = self._is_misplaced(tid)
         self._recompute_mismatches(tid)
+
+    def _is_misplaced(self, tid: int) -> bool:
+        if self._folder_rule is None:
+            return False
+        expected = self._folder_rule(self.edits.year(tid))
+        return expected is not None and fold(self._tracks[tid].folder) != fold(expected)
+
+    def set_folder_rule(self, rule: Callable[[int | None], str | None] | None) -> None:
+        """Stel in welke jaarmap bij een jaar hoort (voor het filter 'Verkeerde jaarmap')."""
+        self._folder_rule = rule
+        for tid in range(len(self._tracks)):
+            self._misplaced[tid] = self._is_misplaced(tid)
+        self.editsApplied.emit()
+
+    # --- na opslaan ----------------------------------------------------------------------
+    def apply_saved(self, moved: Iterable[tuple[int, Path]], tagged: dict[int, TagValues]) -> None:
+        """Verwerk een uitgevoerde batch: nieuwe paden, en de opgeslagen waarden worden de
+        nieuwe originelen (opnieuw geparsed uit de nieuwe bestandsnaam)."""
+        touched: set[int] = set()
+        for tid, new_path in moved:
+            track = self._tracks[tid]
+            track.path = new_path
+            parsed = parse_filename(new_path.stem)
+            track.artist, track.title, track.year = parsed.artist, parsed.title, parsed.year
+            track.parse_status = parsed.status
+            self._folder_keys[tid] = fold(track.folder)
+            touched.add(tid)
+        for tid, tags in tagged.items():
+            info = self._tracks[tid].info
+            if info is not None:
+                info.tag_artist, info.tag_title = tags.artist, tags.title
+                info.tag_year = int(tags.date) if tags.date and tags.date.isdigit() else None
+            touched.add(tid)
+        for tid in touched:
+            self.edits.discard(tid)
+            self.duplicate_flags.discard(tid)
+            self._recompute(tid)
+        self._emit_rows_changed(touched)
+        self.editsApplied.emit()
+
+    def flag_duplicates(self, track_ids: Iterable[int]) -> None:
+        ids = set(track_ids) - self.duplicate_flags
+        if ids:
+            self.duplicate_flags |= ids
+            self._emit_rows_changed(ids)
+            self.editsApplied.emit()
 
     def _recompute_mismatches(self, tid: int) -> None:
         e = self.edits
@@ -501,6 +570,7 @@ class TrackTableModel(QAbstractTableModel):
                     invalid=bool(self._issues[tid]),
                     has_year=e.year(tid) is not None,
                     mismatches=self._mismatches[tid],
+                    duplicate=tid in self.duplicate_flags,
                 )
             case Col.ARTIST | Col.TITLE | Col.YEAR:
                 return format_value(e.value(tid, _EDITABLE[col]))
@@ -550,6 +620,10 @@ class TrackTableModel(QAbstractTableModel):
             lines = []
             if e.is_changed(tid):
                 lines.append(f"Nieuwe naam: {self.target_filename(tid)}")
+            if tid in self.duplicate_flags:
+                lines.append("Gemarkeerd als duplicaat: de doelnaam bestaat al.")
+            if self._misplaced[tid]:
+                lines.append("Staat niet in de verwachte jaarmap.")
             if track.parse_status is ParseStatus.ERROR:
                 lines.append("Bestandsnaam volgt niet het patroon 'Artiest - Titel (Jaar)'.")
             for field, issues in self._issues[tid].items():
