@@ -34,6 +34,9 @@ De versie komt uit de Git-tag (hatch-vcs). Na het wisselen van tag of branch:
 | Wijzigingen van selectie terugdraaien   | Ctrl+R             |
 | Ongedaan maken / opnieuw                | Ctrl+Z / Ctrl+Y    |
 | Opslaan (altijd via preview)            | Ctrl+S             |
+| Afspelen / stoppen (huidige rij)        | Spatie             |
+| Stoppen                                 | Ctrl+.             |
+| 5 seconden terug / vooruit              | Alt+← / Alt+→      |
 | Lopende taak annuleren                  | Esc                |
 
 Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zonder jaar,
@@ -62,6 +65,15 @@ Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zo
   hersorteren.
 - Bij openen van een andere map, herladen of afsluiten met openstaande wijzigingen vraagt de app
   eerst om bevestiging.
+
+### Afspelen
+
+- De eerste kolom heeft per rij een Play/Stop-knop; de spatiebalk speelt de huidige rij af (of
+  stopt als die al speelt). Een nieuwe track stopt de vorige.
+- Onderin staat de mini-player met play/pauze, stop, seekbalk, tijd en volume.
+- "Automatisch volgende geselecteerde" speelt na afloop de volgende geselecteerde rij.
+- Voor opslaan, terugdraaien en herladen stopt het afspelen automatisch: Windows kan een geopend
+  bestand niet hernoemen.
 
 ### Opslaan
 
