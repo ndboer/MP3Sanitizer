@@ -33,7 +33,7 @@ class Settings:
     last_root: str | None = None
     visible_columns: list[str] = field(default_factory=lambda: list(DEFAULT_VISIBLE_COLUMNS))
     window_geometry: str | None = None  # base64 van QWidget.saveGeometry()
-    window_state: str | None = None
+    header_state: str | None = None  # base64 van QHeaderView.saveState()
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Settings:

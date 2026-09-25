@@ -1,8 +1,10 @@
-from mp3sanitizer import __version__
+import sys
 
 
 def main() -> None:
-    print(f"Mp3Sanitizer {__version__}")
+    from mp3sanitizer.ui.app import run
+
+    sys.exit(run())
 
 
 if __name__ == "__main__":
