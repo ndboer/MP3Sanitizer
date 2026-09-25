@@ -7,6 +7,19 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-25
+
+### Added
+- Afspelen met QtMultimedia (`QMediaPlayer` + `QAudioOutput`): Play/Stop-kolom per rij,
+  spatiebalk speelt de huidige rij af; een nieuwe track stopt de vorige.
+- Mini-player onderin met play/pauze, stop, seekbalk, tijd en volume; menu Afspelen met
+  stoppen (Ctrl+.) en 5 s terug/vooruit (Alt+←/→).
+- Optie "Automatisch volgende geselecteerde".
+- Volume en de autoplay-optie worden in de instellingen bewaard.
+
+### Changed
+- Afspelen stopt (en laat het bestand los) vóór opslaan, terugdraaien en herladen.
+
 ## [0.3.0] - 2026-09-25
 
 ### Added
