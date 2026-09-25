@@ -29,6 +29,7 @@ from mp3sanitizer.core.models import (
 )
 from mp3sanitizer.core.normalize import DEFAULT_ARTICLES, fold, natural_key, sort_key
 from mp3sanitizer.core.parser import format_stem, parse_filename
+from mp3sanitizer.core.rules.base import Context, CorrectionInput, Values
 from mp3sanitizer.core.tags import tag_mismatches
 from mp3sanitizer.core.validate import Issue, YearError, parse_year_input, text_issues
 from mp3sanitizer.ui.undo_commands import EditCommand
@@ -299,6 +300,23 @@ class TrackTableModel(QAbstractTableModel):
             if artist.strip():
                 index.setdefault(artist, []).append(t.id)
         return index
+
+    def correction_inputs(self, track_ids: Iterable[int]) -> list[CorrectionInput]:
+        """Invoer voor de batch-correcties: effectieve waarden + tag-jaar."""
+        e = self.edits
+        result = []
+        for tid in track_ids:
+            if tid in self._deleted:
+                continue
+            info = self._tracks[tid].info
+            result.append(
+                CorrectionInput(
+                    tid,
+                    Values(e.artist(tid), e.title(tid), e.year(tid)),
+                    Context(tag_year=info.tag_year if info else None),
+                )
+            )
+        return result
 
     def track_label(self, track_id: int) -> str:
         e = self.edits
