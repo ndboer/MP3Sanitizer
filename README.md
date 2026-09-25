@@ -38,6 +38,8 @@ De versie komt uit de Git-tag (hatch-vcs). Na het wisselen van tag of branch:
 | Stoppen                                 | Ctrl+.             |
 | 5 seconden terug / vooruit              | Alt+← / Alt+→      |
 | Geselecteerde bestanden verwijderen     | Del                |
+| Artiesten zoeken en corrigeren (fuzzy)  | Ctrl+Shift+F       |
+| Artiestenoverzicht en voorstellen       | Ctrl+Shift+A       |
 | Lopende taak annuleren                  | Esc                |
 
 Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zonder jaar,
@@ -66,6 +68,26 @@ Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zo
   hersorteren.
 - Bij openen van een andere map, herladen of afsluiten met openstaande wijzigingen vraagt de app
   eerst om bevestiging.
+
+### Artiesten corrigeren (fuzzy zoeken en MusicBrainz)
+
+- **Bewerken → Artiesten zoeken en corrigeren…** (Ctrl+Shift+F) zoekt fuzzy op artiest:
+  hoofdletters, accenten (Beyoncé = Beyonce), lidwoorden (ook "Beatles, The"), "&/and/en/+" en
+  leestekens tellen niet mee. De drempel (standaard 85) is instelbaar met de schuifregelaar.
+- Resultaten zijn gegroepeerd per schrijfwijze met het aantal tracks ("The Beatles (40)",
+  "Beatles, The (3)"). Vink groepen of losse tracks aan, vul de juiste schrijfwijze in en kies
+  **Toepassen** (één undo-stap).
+- **Opzoeken op MusicBrainz** toont kandidaten (naam, sort-name, land, toelichting, score ≥ 80);
+  de gekozen kandidaat vult de officiële naam in. Maximaal één verzoek per seconde; resultaten
+  worden 30 dagen gecachet in `%LOCALAPPDATA%\Mp3Sanitizer\musicbrainz_cache.json`. Ook
+  beschikbaar via rechtsklik op een rij (toepassen op de geselecteerde rijen).
+- **Artiestenoverzicht en voorstellen** (Ctrl+Shift+A) toont alle artiesten met aantallen en
+  stelt clusters voor van waarschijnlijk dezelfde artiest, met de meestgebruikte schrijfwijze
+  als voorstel.
+
+De score is het gemiddelde van rapidfuzz `token_set_ratio` en `ratio` op de genormaliseerde naam
+(zo is "Beatles Tribute Band" niet hetzelfde als "Beatles", maar "Beatels" wel); bij zoeken telt
+ook een deelmatch mee ("beat" vindt "The Beatles").
 
 ### Afspelen
 

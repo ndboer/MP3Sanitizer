@@ -44,6 +44,9 @@ class Settings:
     # Afspelen
     volume: int = 80  # procent
     autoplay_next: bool = False
+    # Fuzzy zoeken / MusicBrainz
+    fuzzy_threshold: int = 85
+    musicbrainz_contact: str = "https://github.com/ndboer/MP3Sanitizer"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Settings:

@@ -256,6 +256,23 @@ class TrackTableModel(QAbstractTableModel):
     def changed_count(self) -> int:
         return len(self.edits)
 
+    def artist_index(self) -> dict[str, list[int]]:
+        """Per (effectieve) schrijfwijze de track-ids; zonder verwijderde en lege artiesten."""
+        index: dict[str, list[int]] = {}
+        for t in self._tracks:
+            if t.id in self._deleted:
+                continue
+            artist = self.edits.artist(t.id)
+            if artist.strip():
+                index.setdefault(artist, []).append(t.id)
+        return index
+
+    def track_label(self, track_id: int) -> str:
+        e = self.edits
+        year = e.year(track_id)
+        text = f"{e.artist(track_id)} - {e.title(track_id)}"
+        return f"{text} ({year})" if year else text
+
     def target_filename(self, track_id: int) -> str:
         e = self.edits
         track = self._tracks[track_id]

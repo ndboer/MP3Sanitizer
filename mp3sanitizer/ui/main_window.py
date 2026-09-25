@@ -37,9 +37,11 @@ from mp3sanitizer.core.deleter import DeleteItem, DeleteResult, Trash
 from mp3sanitizer.core.executor import ExecResult
 from mp3sanitizer.core.journal import Journal, JournalStore
 from mp3sanitizer.core.models import Field, ParseStatus, RenamePlan
+from mp3sanitizer.core.musicbrainz import MusicBrainzCache, MusicBrainzClient
 from mp3sanitizer.core.paths import data_dir
 from mp3sanitizer.core.planner import DecadeStyle, FolderTemplate, PlanInput, folder_for_year
 from mp3sanitizer.core.settings import SettingsStore
+from mp3sanitizer.ui.artist_search import ArtistDialog, MusicBrainzDialog
 from mp3sanitizer.ui.bulk_edit_dialog import BulkEditDialog
 from mp3sanitizer.ui.delegates import TrackEditDelegate
 from mp3sanitizer.ui.delete_dialog import DeleteDialog
@@ -93,6 +95,9 @@ class MainWindow(QMainWindow):
         self._batch_worker: SaveWorker | UndoWorker | DeleteWorker | None = None
         # None = echte Prullenbak (send2trash); tests vervangen dit.
         self.trash_function: Trash | None = None
+        self._mb_client: MusicBrainzClient | None = None
+        # Tests vervangen dit door een client zonder netwerk.
+        self.mb_client_factory = self.musicbrainz_client
         self.last_report = ""
         self._reload_after_batch = False
         self._root: Path | None = None
@@ -211,6 +216,14 @@ class MainWindow(QMainWindow):
         self.act_save.triggered.connect(self.save_changes)
         self.act_undo_batch = QAction("Laatste batch &terugdraaien…", self)
         self.act_undo_batch.triggered.connect(self.undo_last_batch)
+        self.act_artists = QAction("Artiesten &zoeken en corrigeren…", self)
+        self.act_artists.setShortcut(QKeySequence("Ctrl+Shift+F"))
+        self.act_artists.triggered.connect(lambda: self.open_artist_dialog())
+        self.act_artist_overview = QAction("Artiesten&overzicht en voorstellen…", self)
+        self.act_artist_overview.setShortcut(QKeySequence("Ctrl+Shift+A"))
+        self.act_artist_overview.triggered.connect(lambda: self.open_artist_dialog(overview=True))
+        self.act_mb = QAction("Opzoeken op &MusicBrainz…", self)
+        self.act_mb.triggered.connect(self.lookup_musicbrainz)
         self.act_delete = QAction("&Verwijderen…", self, shortcut=QKeySequence.StandardKey.Delete)
         self.act_delete.setToolTip("Geselecteerde bestanden naar de Prullenbak (Del)")
         # Alleen als de tabel zelf de focus heeft: in een editor wist Del gewoon tekens.
@@ -299,6 +312,9 @@ class MainWindow(QMainWindow):
         m_edit.addAction(self.act_redo)
         m_edit.addSeparator()
         self._add_row_actions(m_edit)
+        m_edit.addSeparator()
+        m_edit.addAction(self.act_artists)
+        m_edit.addAction(self.act_artist_overview)
         m_edit.addSeparator()
         m_edit.addAction(self.act_revert_all)
 
@@ -470,6 +486,47 @@ class MainWindow(QMainWindow):
         self.cancel_button.setVisible(busy)
         self.act_cancel.setEnabled(busy)
 
+    # --- artiesten / MusicBrainz -----------------------------------------------------------
+    def musicbrainz_client(self) -> MusicBrainzClient:
+        """Eén gedeelde client (met rate limit en cache) voor de hele sessie."""
+        if self._mb_client is None:
+            cache = MusicBrainzCache(data_dir() / "musicbrainz_cache.json")
+            self._mb_client = MusicBrainzClient(
+                __version__, self._settings.musicbrainz_contact, cache
+            )
+        return self._mb_client
+
+    def _current_artist(self) -> str:
+        index = self.table.currentIndex()
+        if not index.isValid():
+            return ""
+        return self.model.edits.artist(self.model.track_id(self.proxy.mapToSource(index).row()))
+
+    def open_artist_dialog(self, overview: bool = False) -> None:
+        dialog = ArtistDialog(
+            self.model,
+            self._pool,
+            self.mb_client_factory,
+            threshold=self._settings.fuzzy_threshold,
+            articles=self._settings.articles,
+            query="" if overview else self._current_artist(),
+            parent=self,
+        )
+        if overview:
+            dialog.tabs.setCurrentIndex(1)
+        dialog.exec()
+        self._settings.fuzzy_threshold = dialog.threshold_slider.value()
+
+    def lookup_musicbrainz(self) -> None:
+        ids = self.selected_track_ids()
+        if not ids:
+            return
+        name = self.model.edits.artist(ids[0])
+        dialog = MusicBrainzDialog(self.mb_client_factory(), name, self._pool, self)
+        chosen = dialog.chosen if dialog.exec() else None
+        if chosen is not None and self.model.set_field(ids, Field.ARTIST, chosen.name):
+            self._flash(self.undo_stack.undoText())
+
     # --- verwijderen ---------------------------------------------------------------------
     def delete_selected(self) -> None:
         if self._root is None or not self._ensure_idle():
@@ -562,6 +619,7 @@ class MainWindow(QMainWindow):
         menu.addAction(self.act_revert)
         menu.addSeparator()
         menu.addAction(self.act_play)
+        menu.addAction(self.act_mb)
         menu.addSeparator()
         menu.addAction(self.act_delete)
 

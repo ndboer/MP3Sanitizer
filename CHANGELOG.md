@@ -7,6 +7,20 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-25
+
+### Added
+- Fuzzy zoeken op artiest (rapidfuzz) op een genormaliseerde sleutel: hoofdletters, diacrieten,
+  lidwoorden (ook "Naam, The"), "&/and/en/+" en leestekens genegeerd; instelbare drempel.
+- Resultaten gegroepeerd per schrijfwijze met aantallen; aangevinkte groepen/tracks in één
+  undo-stap corrigeren.
+- MusicBrainz WS/2 artist search: 1 verzoek per seconde, User-Agent met de appversie,
+  herhaalpogingen bij 503, JSON-cache (30 dagen) met `schema_version`; kandidaten met naam,
+  sort-name, land, toelichting en score ≥ 80; de officiële naam wordt ingevuld.
+- Artiestenoverzicht met aantallen en automatische clustervoorstellen.
+- Contextmenu "Opzoeken op MusicBrainz".
+- Zoeken, clusteren en MusicBrainz draaien op de achtergrond.
+
 ## [0.5.0] - 2026-09-25
 
 ### Added
