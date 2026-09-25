@@ -68,6 +68,19 @@ def match_key(name: str, articles: Iterable[str] = DEFAULT_ARTICLES) -> str:
     return _WHITESPACE.sub(" ", key).strip()
 
 
+_DIGITS = re.compile(r"(\d+)")
+
+
+def natural_key(text: str) -> tuple[str | int, ...]:
+    """Sorteersleutel waarbij getallen numeriek tellen: 'song 9' < 'song 10'.
+
+    Het resultaat wisselt altijd af tussen tekst en getal (beginnend met tekst), zodat
+    sleutels van verschillende strings altijd vergelijkbaar zijn.
+    """
+    parts = _DIGITS.split(text)
+    return tuple(int(p) if i % 2 else p for i, p in enumerate(parts))
+
+
 def loose_equal(a: str | None, b: str | None) -> bool:
     """Vergelijking voor tag-mismatch: hoofdletters, spaties en quotes tellen niet mee."""
     if a is None or b is None:

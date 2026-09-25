@@ -46,6 +46,12 @@ def split_year(stem: str, *, upper: int | None = None) -> tuple[str, int | None]
     return stem, None
 
 
+def format_stem(artist: str, title: str, year: int | None) -> str:
+    """Omgekeerde van ``parse_filename``: ``Artiest - Titel (Jaar)`` of zonder jaar."""
+    stem = f"{artist} - {title}" if artist else title
+    return f"{stem} ({year})" if year is not None else stem
+
+
 def parse_filename(stem: str, *, upper_year: int | None = None) -> ParsedName:
     """Parse een bestandsnaam zonder extensie.
 

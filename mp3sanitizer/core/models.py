@@ -14,6 +14,9 @@ class Field(StrEnum):
     YEAR = "year"
 
 
+type FieldValue = str | int | None
+
+
 class ParseStatus(StrEnum):
     OK = "ok"
     NO_YEAR = "no_year"
@@ -61,3 +64,24 @@ class Track:
             return ""
         prefix = root if root.endswith(os.sep) else root + os.sep
         return parent[len(prefix) :] if parent.startswith(prefix) else parent
+
+    def original(self, field: Field) -> FieldValue:
+        """De waarde zoals geparsed uit de bestandsnaam op schijf."""
+        match field:
+            case Field.ARTIST:
+                return self.artist
+            case Field.TITLE:
+                return self.title
+            case Field.YEAR:
+                return self.year
+
+
+@dataclass(frozen=True, slots=True)
+class PendingChange:
+    """Eén veldwijziging in het geheugen; ``old`` en ``new`` zijn effectieve waarden."""
+
+    track_id: int
+    field: Field
+    old: FieldValue
+    new: FieldValue
+    source: str = "manual"  # "manual" | "bulk" | "swap" | "revert" | "rule:<naam>" | ...
