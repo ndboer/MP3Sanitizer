@@ -54,6 +54,8 @@ class Settings:
     dup_ignore_year: bool = True
     dup_ignore_versions: bool = False
     dup_use_duration: bool = False
+    # Updatecheck bij het opstarten (alleen een melding; nooit automatisch downloaden)
+    check_updates: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Settings:
