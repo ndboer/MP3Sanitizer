@@ -40,10 +40,11 @@ De versie komt uit de Git-tag (hatch-vcs). Na het wisselen van tag of branch:
 | Geselecteerde bestanden verwijderen     | Del                |
 | Artiesten zoeken en corrigeren (fuzzy)  | Ctrl+Shift+F       |
 | Artiestenoverzicht en voorstellen       | Ctrl+Shift+A       |
+| Duplicaten zoeken                       | Ctrl+D             |
 | Lopende taak annuleren                  | Esc                |
 
 Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zonder jaar,
-5 Tag-mismatch, 6 Ongeldige namen, 7 Verkeerde jaarmap.
+5 Tag-mismatch, 6 Ongeldige namen, 7 Verkeerde jaarmap, 8 Duplicaten.
 
 - De bestandsnaam wordt gesplitst op de **eerste** ` - ` (ook en-/em-dash). Een jaar `(dddd)` aan
   het eind telt alleen als het tussen 1900 en volgend jaar ligt.
@@ -88,6 +89,19 @@ Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zo
 De score is het gemiddelde van rapidfuzz `token_set_ratio` en `ratio` op de genormaliseerde naam
 (zo is "Beatles Tribute Band" niet hetzelfde als "Beatles", maar "Beatels" wel); bij zoeken telt
 ook een deelmatch mee ("beat" vindt "The Beatles").
+
+### Duplicaten
+
+**Bewerken → Duplicaten zoeken…** (Ctrl+D) vergelijkt genormaliseerde artiest + titel.
+
+- Strikt (exact na normalisatie) of fuzzy met een drempel; jaar negeren; versie-aanduidingen
+  negeren ((Remix), (Live), (Radio Edit), (Extended Mix), (Remastered), ook tussen `[ ]` of na
+  " - "); optioneel duur ±2 s als extra criterium.
+- Per groep zie je bitrate, duur, grootte, jaar en map. **Beste automatisch behouden**: hoogste
+  bitrate, dan langste duur, dan kortste pad; de rest is aangevinkt voor verwijderen en per
+  groep aan te passen (spatie). Enter speelt de track af.
+- **Aangevinkte verwijderen** loopt via de gewone bevestiging (Prullenbak).
+- Snelfilter 8 "Duplicaten" in de hoofdtabel gebruikt dezelfde (laatst gekozen) opties.
 
 ### Afspelen
 
