@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import logging
+import subprocess
+import sys
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QEvent, QObject, Qt, QThreadPool, QTimer, Slot
+from PySide6.QtCore import QByteArray, QEvent, QObject, Qt, QThreadPool, QTimer, QUrl, Slot
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
     QCloseEvent,
+    QDesktopServices,
     QKeyEvent,
     QKeySequence,
     QUndoStack,
@@ -36,11 +39,20 @@ from mp3sanitizer import __version__
 from mp3sanitizer.core.deleter import DeleteItem, DeleteResult, Trash
 from mp3sanitizer.core.duplicates import DupItem, DupOptions, find_duplicates
 from mp3sanitizer.core.executor import ExecResult
+from mp3sanitizer.core.export import export_csv
 from mp3sanitizer.core.journal import Journal, JournalStore
 from mp3sanitizer.core.models import Field, ParseStatus, RenamePlan
 from mp3sanitizer.core.musicbrainz import MusicBrainzCache, MusicBrainzClient
 from mp3sanitizer.core.paths import data_dir
 from mp3sanitizer.core.planner import DecadeStyle, FolderTemplate, PlanInput, folder_for_year
+from mp3sanitizer.core.project import (
+    PROJECT_SUFFIX,
+    ProjectEntry,
+    ProjectError,
+    load_project,
+    match_project,
+    save_project,
+)
 from mp3sanitizer.core.rules.config import RulesStore
 from mp3sanitizer.core.settings import SettingsStore
 from mp3sanitizer.ui.artist_search import ArtistDialog, MusicBrainzDialog
@@ -111,6 +123,7 @@ class MainWindow(QMainWindow):
         self._jobs = JobRunner(self._pool, self)
         self.last_report = ""
         self._reload_after_batch = False
+        self._pending_project = None
         self._root: Path | None = None
         # Actieve workers per signals-object; oude workers blijven bewaard tot ze klaar zijn.
         self._workers: dict[WorkerSignals, Worker] = {}
@@ -227,6 +240,20 @@ class MainWindow(QMainWindow):
         self.act_save.triggered.connect(self.save_changes)
         self.act_undo_batch = QAction("Laatste batch &terugdraaien…", self)
         self.act_undo_batch.triggered.connect(self.undo_last_batch)
+        self.act_save_session = QAction("Sessie op&slaan…", self)
+        self.act_save_session.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        self.act_save_session.setToolTip("Niet-opgeslagen wijzigingen bewaren als projectbestand")
+        self.act_save_session.triggered.connect(self.save_session)
+        self.act_open_session = QAction("Sessie o&penen…", self)
+        self.act_open_session.setShortcut(QKeySequence("Ctrl+Shift+O"))
+        self.act_open_session.triggered.connect(self.open_session)
+        self.act_export = QAction("&Exporteren naar CSV…", self)
+        self.act_export.triggered.connect(self.export_csv)
+        self.act_reveal = QAction("Openen in &Verkenner", self)
+        self.act_reveal.setShortcut(QKeySequence("Ctrl+E"))
+        self.act_reveal.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.act_reveal.triggered.connect(self.reveal_in_explorer)
+        self.table.addAction(self.act_reveal)
         self.act_artists = QAction("Artiesten &zoeken en corrigeren…", self)
         self.act_artists.setShortcut(QKeySequence("Ctrl+Shift+F"))
         self.act_artists.triggered.connect(lambda: self.open_artist_dialog())
@@ -322,6 +349,10 @@ class MainWindow(QMainWindow):
         m_file.addSeparator()
         m_file.addAction(self.act_save)
         m_file.addAction(self.act_undo_batch)
+        m_file.addSeparator()
+        m_file.addAction(self.act_open_session)
+        m_file.addAction(self.act_save_session)
+        m_file.addAction(self.act_export)
         m_file.addSeparator()
         m_file.addAction(self.act_cancel)
         m_file.addSeparator()
@@ -553,6 +584,120 @@ class MainWindow(QMainWindow):
         if chosen is not None and self.model.set_field(ids, Field.ARTIST, chosen.name):
             self._flash(self.undo_stack.undoText())
 
+    # --- Verkenner, CSV en sessies ------------------------------------------------------
+    def reveal_in_explorer(self) -> None:
+        ids = self.selected_track_ids()
+        if not ids:
+            return
+        path = self.model.tracks[ids[0]].path
+        if sys.platform == "win32":
+            # explorer verwacht '/select,' en het pad als één argument
+            subprocess.Popen(f'explorer /select,"{path}"')
+        else:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent)))
+
+    def export_csv(self) -> None:
+        if not self.proxy.rowCount():
+            self._flash("Niets te exporteren")
+            return
+        default = str((self._root or Path.home()) / "mp3sanitizer-overzicht.csv")
+        path, _ = QFileDialog.getSaveFileName(self, "Exporteren naar CSV", default, "CSV (*.csv)")
+        if path:
+            n = self.write_csv(Path(path))
+            self._flash(f"{n} rijen geëxporteerd naar {Path(path).name}")
+
+    def write_csv(self, path: Path) -> int:
+        """Het (gefilterde) overzicht met de zichtbare kolommen in de getoonde volgorde."""
+        header = self.table.horizontalHeader()
+        cols = [
+            Col(header.logicalIndex(v))
+            for v in range(header.count())
+            if not header.isSectionHidden(header.logicalIndex(v))
+            and header.logicalIndex(v) != Col.PLAY
+        ]
+        proxy = self.proxy
+
+        def rows():
+            for r in range(proxy.rowCount()):
+                values = []
+                for col in cols:
+                    text = proxy.index(r, col).data() or ""
+                    values.append("" if text == "…" else text)  # nog niet ingelezen
+                yield values
+
+        return export_csv(path, [c.header for c in cols], rows())
+
+    def save_session(self) -> bool:
+        """Bewaar de niet-opgeslagen wijzigingen als projectbestand. ``True`` als opgeslagen."""
+        if self._root is None or not self.model.changed_count():
+            self._flash("Geen niet-opgeslagen wijzigingen om te bewaren")
+            return False
+        default = str(self._root / f"sessie{PROJECT_SUFFIX}")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Sessie opslaan", default, f"Mp3Sanitizer-sessie (*{PROJECT_SUFFIX})"
+        )
+        if not path:
+            return False
+        self.write_session(Path(path))
+        return True
+
+    def write_session(self, path: Path) -> int:
+        assert self._root is not None
+        e = self.model.edits
+        root = self._root
+        entries = [
+            ProjectEntry(
+                relative(self.model.tracks[tid].path, root),
+                {f: e.value(tid, f) for f in e.changed_fields(tid)},
+            )
+            for tid in sorted(e.changed_ids)
+        ]
+        n = save_project(path, root, __version__, entries)
+        self._flash(f"Sessie opgeslagen: {n} tracks in {path.name}")
+        return n
+
+    def open_session(self) -> None:
+        if self._batch_running() or not self.confirm_discard("Een sessie openen"):
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Sessie openen", str(self._root or ""), f"Mp3Sanitizer-sessie (*{PROJECT_SUFFIX})"
+        )
+        if path:
+            self.load_session(Path(path))
+
+    def load_session(self, path: Path) -> None:
+        try:
+            project = load_project(path)
+        except ProjectError as exc:
+            QMessageBox.warning(self, APP_TITLE, str(exc))
+            return
+        root = Path(project.root)
+        if not root.is_dir():
+            QMessageBox.warning(
+                self, APP_TITLE, f"De hoofdmap van deze sessie bestaat niet: {root}"
+            )
+            return
+        self._pending_project = project
+        self.start_scan(root)  # wijzigingen volgen zodra de scan klaar is
+
+    def _apply_pending_project(self) -> None:
+        project, self._pending_project = self._pending_project, None
+        if project is None or self._root is None:
+            return
+        m, e, root = self.model, self.model.edits, self._root
+        current = {
+            t.id: {f: e.value(t.id, f) for f in (Field.ARTIST, Field.TITLE, Field.YEAR)}
+            for t in m.tracks
+        }
+        result = match_project(project, [(t.id, relative(t.path, root)) for t in m.tracks], current)
+        m.push_changes(result.changes, f"Sessie geladen ({len(result.changes)} wijzigingen)")
+        self.undo_stack.setClean()
+        message = f"Sessie geladen: {len(result.changes)} wijzigingen"
+        if result.unmatched:
+            message += f"; {len(result.unmatched)} bestanden niet (meer) gevonden"
+            log.warning("Sessie: niet gevonden: %s", result.unmatched[:20])
+        self._flash(message, 10000)
+
     # --- batch-correcties ----------------------------------------------------------------
     def visible_track_ids(self) -> list[int]:
         proxy = self.proxy
@@ -730,6 +875,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction(self.act_play)
         menu.addAction(self.act_mb)
+        menu.addAction(self.act_reveal)
         menu.addSeparator()
         menu.addAction(self.act_delete)
 
@@ -791,15 +937,19 @@ class MainWindow(QMainWindow):
         n = self.model.changed_count()
         if n == 0:
             return True
+        buttons = QMessageBox.StandardButton
         answer = QMessageBox.warning(
             self,
             APP_TITLE,
             f"Er zijn {n} tracks met niet-opgeslagen wijzigingen.\n\n"
-            f"{action} en deze wijzigingen verwerpen?",
-            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
+            f"{action} en deze wijzigingen verwerpen?\n"
+            "(Met Opslaan bewaar je ze eerst als sessie; hernoemen doe je met Ctrl+S.)",
+            buttons.Save | buttons.Discard | buttons.Cancel,
+            buttons.Cancel,
         )
-        return answer == QMessageBox.StandardButton.Discard
+        if answer == buttons.Save:
+            return self.save_session()
+        return answer == buttons.Discard
 
     # --- scannen -------------------------------------------------------------------------
     def _batch_running(self) -> bool:
@@ -869,10 +1019,12 @@ class MainWindow(QMainWindow):
         self.model.resort()
         count = self.model.rowCount()
         if cancelled:
+            self._pending_project = None
             self._set_busy(False)
             self._flash(f"Scan geannuleerd na {count} bestanden", 5000)
             return
         self._flash(f"{count} bestanden gevonden", 5000)
+        self._apply_pending_project()  # na de melding hierboven, zodat die niet overschrijft
         if count == 0:
             self._set_busy(False)
             return
