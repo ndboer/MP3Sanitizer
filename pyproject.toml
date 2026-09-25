@@ -8,6 +8,8 @@ dynamic = ["version"]
 description = "Inventariseer, schoon op en hernoem een muziekcollectie op basis van de bestandsnaam."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "PySide6>=6.7",
     "mutagen>=1.47",
@@ -43,6 +45,8 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+# Unicode-leestekens (en-dash, typografische quotes) zijn in dit domein juist bedoeld.
+ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
