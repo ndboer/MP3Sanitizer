@@ -7,6 +7,17 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-25
+
+### Added
+- Verwijderen (Del / contextmenu): standaard naar de Prullenbak via send2trash, altijd na een
+  bevestiging met het aantal en de lijst van bestanden.
+- Permanent verwijderen alleen via een expliciete optie met extra bevestiging.
+- Verwijderen draait op de achtergrond; fouten per bestand stoppen de rest niet en worden
+  gemeld. Elke verwijdering wordt in het journaal vastgelegd.
+- Afspelen stopt als de spelende track wordt verwijderd; verwijderde tracks verdwijnen uit de
+  tabel en tellers.
+
 ## [0.4.0] - 2026-09-25
 
 ### Added
