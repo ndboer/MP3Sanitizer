@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from mp3sanitizer import __version__
+from mp3sanitizer.core.deleter import DeleteItem, DeleteResult, Trash
 from mp3sanitizer.core.executor import ExecResult
 from mp3sanitizer.core.journal import Journal, JournalStore
 from mp3sanitizer.core.models import Field, ParseStatus, RenamePlan
@@ -41,11 +42,13 @@ from mp3sanitizer.core.planner import DecadeStyle, FolderTemplate, PlanInput, fo
 from mp3sanitizer.core.settings import SettingsStore
 from mp3sanitizer.ui.bulk_edit_dialog import BulkEditDialog
 from mp3sanitizer.ui.delegates import TrackEditDelegate
+from mp3sanitizer.ui.delete_dialog import DeleteDialog
 from mp3sanitizer.ui.player import SEEK_STEP_MS, MiniPlayer, Player, next_in_selection
 from mp3sanitizer.ui.proxy_model import QuickFilter, TrackFilterProxy
-from mp3sanitizer.ui.save_dialog import SavePreviewDialog
+from mp3sanitizer.ui.save_dialog import SavePreviewDialog, relative
 from mp3sanitizer.ui.track_model import FIELD_COLUMN, Col, TrackTableModel
 from mp3sanitizer.ui.workers import (
+    DeleteWorker,
     SaveWorker,
     ScanWorker,
     TagWorker,
@@ -87,7 +90,9 @@ class MainWindow(QMainWindow):
         self._settings = store.settings
         self._pool = pool or QThreadPool.globalInstance()
         self.journals = journal_store or JournalStore(data_dir() / "journal")
-        self._batch_worker: SaveWorker | UndoWorker | None = None
+        self._batch_worker: SaveWorker | UndoWorker | DeleteWorker | None = None
+        # None = echte Prullenbak (send2trash); tests vervangen dit.
+        self.trash_function: Trash | None = None
         self.last_report = ""
         self._reload_after_batch = False
         self._root: Path | None = None
@@ -206,6 +211,12 @@ class MainWindow(QMainWindow):
         self.act_save.triggered.connect(self.save_changes)
         self.act_undo_batch = QAction("Laatste batch &terugdraaien…", self)
         self.act_undo_batch.triggered.connect(self.undo_last_batch)
+        self.act_delete = QAction("&Verwijderen…", self, shortcut=QKeySequence.StandardKey.Delete)
+        self.act_delete.setToolTip("Geselecteerde bestanden naar de Prullenbak (Del)")
+        # Alleen als de tabel zelf de focus heeft: in een editor wist Del gewoon tekens.
+        self.act_delete.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
+        self.act_delete.triggered.connect(self.delete_selected)
+        self.table.addAction(self.act_delete)
         self.act_play = QAction("&Afspelen / stoppen", self)
         self.act_play.setShortcut(QKeySequence("Space"))
         # De spatiebalk zelf loopt via eventFilter; de sneltoets hier is alleen ter info
@@ -434,7 +445,7 @@ class MainWindow(QMainWindow):
         self._stats_timer.start()
 
     def _update_stats(self) -> None:
-        total = self.model.rowCount()
+        total = self.model.live_count()
         visible = self.proxy.rowCount()
         selected = len(self.table.selectionModel().selectedRows())
         errors = self.model.parse_error_count()
@@ -458,6 +469,31 @@ class MainWindow(QMainWindow):
         self.progress.setVisible(busy)
         self.cancel_button.setVisible(busy)
         self.act_cancel.setEnabled(busy)
+
+    # --- verwijderen ---------------------------------------------------------------------
+    def delete_selected(self) -> None:
+        if self._root is None or not self._ensure_idle():
+            return
+        ids = [i for i in self.selected_track_ids() if not self.model.is_deleted_id(i)]
+        if not ids:
+            return
+        root = self._root
+        paths = [relative(self.model.tracks[i].path, root) for i in ids]
+        dialog = DeleteDialog(paths, self)
+        if not dialog.exec():
+            return
+        self.start_delete(ids, dialog.is_permanent)
+
+    def start_delete(self, track_ids: list[int], permanent: bool) -> None:
+        assert self._root is not None
+        if self.player.current_track in track_ids:
+            self.stop_playback()
+        items = [DeleteItem(i, self.model.tracks[i].path) for i in track_ids]
+        worker = DeleteWorker(
+            items, self.journals, self._root, __version__, permanent, self.trash_function
+        )
+        verb = "Permanent verwijderen" if permanent else "Naar Prullenbak"
+        self._start_batch(worker, f"{verb} ({len(items)})…", len(items))
 
     # --- bewerken ------------------------------------------------------------------------
     # --- afspelen ------------------------------------------------------------------------
@@ -526,6 +562,8 @@ class MainWindow(QMainWindow):
         menu.addAction(self.act_revert)
         menu.addSeparator()
         menu.addAction(self.act_play)
+        menu.addSeparator()
+        menu.addAction(self.act_delete)
 
     def _show_row_menu(self, pos) -> None:
         if not self.table.indexAt(pos).isValid():
@@ -723,7 +761,7 @@ class MainWindow(QMainWindow):
         inputs = []
         for t in m.tracks:
             changed = e.is_changed(t.id)
-            if t.parse_status is ParseStatus.ERROR and not changed:
+            if m.is_deleted_id(t.id) or (t.parse_status is ParseStatus.ERROR and not changed):
                 continue
             inputs.append(
                 PlanInput(
@@ -788,7 +826,9 @@ class MainWindow(QMainWindow):
         worker = UndoWorker(target, self.journals, __version__)
         self._start_batch(worker, "Terugdraaien…", target.ok_count)
 
-    def _start_batch(self, worker: SaveWorker | UndoWorker, text: str, total: int) -> None:
+    def _start_batch(
+        self, worker: SaveWorker | UndoWorker | DeleteWorker, text: str, total: int
+    ) -> None:
         worker.signals.progress.connect(self._on_batch_progress)
         worker.signals.batch.connect(self._on_batch_result)
         worker.signals.finished.connect(self._on_batch_finished)
@@ -810,7 +850,10 @@ class MainWindow(QMainWindow):
         if not self._is_current(worker):
             return
         result, journal = payload  # type: ignore[misc]
-        if isinstance(worker, SaveWorker):
+        if isinstance(worker, DeleteWorker):
+            self.model.mark_deleted(result.deleted)
+            self.report_delete(result, worker.permanent)
+        elif isinstance(worker, SaveWorker):
             self.model.apply_saved([(m.track_id, m.dst) for m in result.moved], result.tagged)
             self.undo_stack.clear()  # de commando's verwijzen naar de oude originele waarden
             self.report_batch(result, journal, "Opgeslagen")
@@ -826,6 +869,25 @@ class MainWindow(QMainWindow):
             if self._reload_after_batch and self._root is not None:
                 self._reload_after_batch = False
                 self.start_scan(self._root)
+
+    def report_delete(self, result: DeleteResult, permanent: bool) -> None:
+        where = "permanent verwijderd" if permanent else "naar de Prullenbak verplaatst"
+        summary = f"{len(result.deleted)} bestanden {where}"
+        if result.cancelled:
+            summary += " (geannuleerd)"
+        self.last_report = summary
+        log.info(summary)
+        if not result.failures:
+            self._flash(summary, 8000)
+            return
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle(APP_TITLE)
+        box.setText(
+            f"{summary}.\n\n{len(result.failures)} bestanden konden niet worden verwijderd."
+        )
+        box.setDetailedText("\n".join(f"{p}: {m}" for _, p, m in result.failures))
+        box.exec()
 
     def report_batch(self, result: ExecResult, journal: Journal, verb: str) -> None:
         moved, tagged, failed = len(result.moved), len(result.tagged), len(result.failures)

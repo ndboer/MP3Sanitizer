@@ -37,6 +37,7 @@ De versie komt uit de Git-tag (hatch-vcs). Na het wisselen van tag of branch:
 | Afspelen / stoppen (huidige rij)        | Spatie             |
 | Stoppen                                 | Ctrl+.             |
 | 5 seconden terug / vooruit              | Alt+← / Alt+→      |
+| Geselecteerde bestanden verwijderen     | Del                |
 | Lopende taak annuleren                  | Esc                |
 
 Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zonder jaar,
@@ -74,6 +75,15 @@ Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zo
 - "Automatisch volgende geselecteerde" speelt na afloop de volgende geselecteerde rij.
 - Voor opslaan, terugdraaien en herladen stopt het afspelen automatisch: Windows kan een geopend
   bestand niet hernoemen.
+
+### Verwijderen
+
+- **Del** (of rechtsklik → Verwijderen) verplaatst de geselecteerde bestanden naar de
+  **Prullenbak**, altijd na een bevestiging met het aantal en de lijst van bestanden.
+- Permanent verwijderen kan alleen via het vinkje in dat venster, met een extra bevestiging;
+  Enter kiest dan Annuleren.
+- Verwijderingen staan in het journaal, maar zijn niet via "Laatste batch terugdraaien" te
+  herstellen: haal bestanden terug uit de Prullenbak van Windows.
 
 ### Opslaan
 

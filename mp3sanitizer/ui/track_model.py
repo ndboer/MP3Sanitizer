@@ -194,6 +194,8 @@ class TrackTableModel(QAbstractTableModel):
         self._folder_rule: Callable[[int | None], str | None] | None = None
         self.duplicate_flags: set[int] = set()  # track-ids, gemarkeerd bij een botsing
         self._playing: int | None = None  # track-id die nu speelt
+        # Verwijderde tracks blijven in de lijst (ids blijven geldig) maar zijn verborgen.
+        self._deleted: set[int] = set()
         # _order[rij] = track-id; _rows[track-id] = rij
         self._order: list[int] = []
         self._rows: list[int] = []
@@ -234,8 +236,22 @@ class TrackTableModel(QAbstractTableModel):
         """Gevouwen 'artiest\\0titel\\0bestandsnaam' voor het zoekfilter."""
         return self._search_keys[self._order[row]]
 
+    def is_deleted(self, row: int) -> bool:
+        return self._order[row] in self._deleted
+
+    def is_deleted_id(self, track_id: int) -> bool:
+        return track_id in self._deleted
+
+    def live_count(self) -> int:
+        """Aantal tracks zonder de verwijderde."""
+        return len(self._tracks) - len(self._deleted)
+
     def parse_error_count(self) -> int:
-        return sum(1 for t in self._tracks if t.parse_status is ParseStatus.ERROR)
+        return sum(
+            1
+            for t in self._tracks
+            if t.parse_status is ParseStatus.ERROR and t.id not in self._deleted
+        )
 
     def changed_count(self) -> int:
         return len(self.edits)
@@ -263,6 +279,8 @@ class TrackTableModel(QAbstractTableModel):
             cache.clear()
         self.edits.clear()
         self.duplicate_flags.clear()
+        self._deleted.clear()
+        self._playing = None
         self.endResetModel()
 
     def append_tracks(self, tracks: Sequence[Track], *, resort: bool = True) -> None:
@@ -368,6 +386,18 @@ class TrackTableModel(QAbstractTableModel):
         changed = {t for t in (self._playing, track_id) if t is not None}
         self._playing = track_id
         self._emit_rows_changed(t for t in changed if t < len(self._tracks))
+
+    def mark_deleted(self, track_ids: Iterable[int]) -> None:
+        """Verberg verwijderde tracks; hun niet-opgeslagen wijzigingen vervallen."""
+        ids = set(track_ids) - self._deleted
+        if not ids:
+            return
+        self._deleted |= ids
+        for tid in ids:
+            self.edits.discard(tid)
+            self.duplicate_flags.discard(tid)
+        self._emit_rows_changed(ids)
+        self.editsApplied.emit()
 
     def flag_duplicates(self, track_ids: Iterable[int]) -> None:
         ids = set(track_ids) - self.duplicate_flags

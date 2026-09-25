@@ -33,11 +33,14 @@ class Op(StrEnum):
     MOVE = "move"  # andere map
     TAG = "tag"
     RMDIR = "rmdir"  # lege map opgeruimd
+    TRASH = "trash"  # naar de Prullenbak (herstellen via de Prullenbak zelf)
+    DELETE = "delete"  # permanent verwijderd
 
 
 class Kind(StrEnum):
     SAVE = "save"
     UNDO = "undo"
+    DELETE = "delete"  # niet terug te draaien vanuit de app
 
 
 @dataclass(slots=True)

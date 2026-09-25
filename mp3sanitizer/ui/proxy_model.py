@@ -97,6 +97,8 @@ class TrackFilterProxy(QSortFilterProxyModel):
     ) -> bool:
         model = self.sourceModel()
         assert isinstance(model, TrackTableModel)
+        if model.is_deleted(source_row):
+            return False
         track = model.track(source_row)
         match self._quick:
             case QuickFilter.PARSE_ERRORS:

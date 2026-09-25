@@ -11,6 +11,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QRunnable, Signal
 
 from mp3sanitizer.core.batch import run_save, run_undo
+from mp3sanitizer.core.deleter import DeleteItem, Trash, delete_files
 from mp3sanitizer.core.journal import Journal, JournalStore
 from mp3sanitizer.core.models import AudioInfo, RenamePlan, Track
 from mp3sanitizer.core.scanner import iter_audio_files, track_from_path
@@ -160,5 +161,40 @@ class UndoWorker(Worker):
             self.app_version,
             progress=self.signals.progress.emit,
             cancelled=lambda: self.cancelled,
+        )
+        self.signals.batch.emit(result)
+
+
+class DeleteWorker(Worker):
+    """Verwijdert bestanden. ``batch`` levert ``(DeleteResult, Journal)``."""
+
+    def __init__(
+        self,
+        items: Sequence[DeleteItem],
+        store: JournalStore,
+        root: Path,
+        app_version: str,
+        permanent: bool,
+        trash: Trash | None = None,
+    ) -> None:
+        super().__init__()
+        self.items = list(items)
+        self.store = store
+        self.root = root
+        self.app_version = app_version
+        self.permanent = permanent
+        self.trash = trash
+
+    def work(self) -> None:
+        kwargs = {"trash": self.trash} if self.trash is not None else {}
+        result = delete_files(
+            self.items,
+            self.store,
+            self.root,
+            self.app_version,
+            permanent=self.permanent,
+            progress=self.signals.progress.emit,
+            cancelled=lambda: self.cancelled,
+            **kwargs,
         )
         self.signals.batch.emit(result)
