@@ -18,6 +18,7 @@ from typing import Any
 
 import httpx
 
+from mp3sanitizer.core import migrations
 from mp3sanitizer.core.normalize import fold
 from mp3sanitizer.core.storage import LoadStatus, load_document, save_document
 
@@ -107,7 +108,7 @@ class MusicBrainzCache:
         self._now = now
         self._entries: dict[str, dict[str, Any]] = {}
         self._writable = True
-        result = load_document(path, CACHE_SCHEMA_VERSION)
+        result = load_document(path, CACHE_SCHEMA_VERSION, migrations.MUSICBRAINZ_CACHE)
         if result.status is LoadStatus.NEWER:
             self._writable = False
         elif result.status in (LoadStatus.OK, LoadStatus.MIGRATED):

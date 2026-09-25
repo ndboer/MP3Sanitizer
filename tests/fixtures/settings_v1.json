@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "extensions": [".mp3", ".flac"],
+  "articles": ["The", "De"],
+  "last_root": "D:\\Muziek",
+  "visible_columns": ["status", "artist", "title", "year", "folder", "filename", "duration"],
+  "window_geometry": null,
+  "header_state": null
+}

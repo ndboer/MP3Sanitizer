@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
+from mp3sanitizer.core import migrations
 from mp3sanitizer.core.normalize import DEFAULT_ARTICLES
 from mp3sanitizer.core.rules.abbrev import DEFAULT_ABBREVIATIONS, AbbreviationRule
 from mp3sanitizer.core.rules.base import Rule
@@ -176,7 +177,7 @@ class RulesStore:
     @classmethod
     def load(cls, config_dir: Path) -> RulesStore:
         path = config_dir / RULES_FILENAME
-        result = load_document(path, RULES_SCHEMA_VERSION)
+        result = load_document(path, RULES_SCHEMA_VERSION, migrations.RULES)
         config = RulesConfig.from_dict(result.data) if result.data else RulesConfig()
         return cls(path, config, result)
 

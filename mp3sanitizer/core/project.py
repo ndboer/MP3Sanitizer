@@ -25,11 +25,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from mp3sanitizer.core import migrations
 from mp3sanitizer.core.models import Field, FieldValue, PendingChange
 from mp3sanitizer.core.storage import LoadStatus, Migration, load_document, save_document
 
 PROJECT_SCHEMA_VERSION = 1
-PROJECT_MIGRATIONS: Mapping[int, Migration] = {}
+PROJECT_MIGRATIONS: Mapping[int, Migration] = migrations.PROJECT
 PROJECT_SUFFIX = ".mp3s.json"
 
 

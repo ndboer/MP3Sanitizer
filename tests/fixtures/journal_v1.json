@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "batch_id": "20260925-120000-abc123",
+  "created": "2026-09-25T12:00:00",
+  "app_version": "0.8.0",
+  "root": "{root}",
+  "kind": "save",
+  "finished": true,
+  "undoes": null,
+  "undone_by": null,
+  "entries": [
+    {
+      "op": "move",
+      "src": "{root}\\rommel\\queen - innuendo.mp3",
+      "dst": "{root}\\1991\\Queen - Innuendo (1991).mp3",
+      "ok": true,
+      "track_id": 0
+    },
+    {
+      "op": "rename",
+      "src": "{root}\\a-ha - take on me.mp3",
+      "dst": "{root}\\A-ha - Take On Me.mp3",
+      "ok": true,
+      "track_id": 1
+    },
+    {
+      "op": "rename",
+      "src": "{root}\\weg.mp3",
+      "dst": "{root}\\Weg.mp3",
+      "ok": false,
+      "error": "doel bestaat al",
+      "track_id": 2
+    },
+    {
+      "op": "rmdir",
+      "src": "{root}\\rommel",
+      "dst": "{root}\\rommel",
+      "ok": true
+    }
+  ]
+}
