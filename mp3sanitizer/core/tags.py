@@ -1,4 +1,4 @@
-"""Tags, duur en bitrate lezen met mutagen."""
+"""Tags, duur en bitrate lezen (en artiest/titel/jaar schrijven) met mutagen."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import mutagen
 
-from mp3sanitizer.core.models import AudioInfo, Field
+from mp3sanitizer.core.models import AudioInfo, Field, TagValues
 from mp3sanitizer.core.normalize import loose_equal
 
 log = logging.getLogger(__name__)
@@ -81,3 +81,39 @@ def tag_mismatches(
     if info.tag_year is not None and year is not None and info.tag_year != year:
         result.append(Field.YEAR)
     return result
+
+
+class TagWriteError(Exception):
+    pass
+
+
+def write_tags(path: Path, values: TagValues) -> TagValues:
+    """Schrijf artiest, titel en jaar (``date``). Geeft de oude waarden terug (voor undo).
+
+    Een waarde ``None`` verwijdert de tag. Formaten zonder 'easy'-tags (bijv. sommige WAV's)
+    geven een ``TagWriteError``.
+    """
+    try:
+        audio = mutagen.File(path, easy=True)
+    except Exception as exc:
+        raise TagWriteError(f"Kan bestand niet openen: {exc}") from exc
+    if audio is None:
+        raise TagWriteError("Onbekend formaat")
+    if audio.tags is None:
+        try:
+            audio.add_tags()
+        except Exception as exc:
+            raise TagWriteError(f"Kan geen tags toevoegen: {exc}") from exc
+    tags = audio.tags
+    before = TagValues(_first(tags, "artist"), _first(tags, "title"), _first(tags, "date"))
+    try:
+        for key, value in values.to_dict().items():
+            if value is None:
+                if key in tags:
+                    del tags[key]
+            else:
+                tags[key] = [value]
+        audio.save()
+    except Exception as exc:  # mutagen: uiteenlopende excepties per formaat
+        raise TagWriteError(f"Tags schrijven mislukt: {exc}") from exc
+    return before
