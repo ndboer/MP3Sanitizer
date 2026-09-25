@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterable
+from functools import lru_cache
 
 DEFAULT_ARTICLES: tuple[str, ...] = (
     "The",
@@ -38,14 +39,19 @@ def fold(text: str) -> str:
     return _WHITESPACE.sub(" ", strip_diacritics(text).casefold()).strip()
 
 
+@lru_cache(maxsize=32)
+def _article_affixes(articles: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
+    """Per lidwoord het voorvoegsel 'the ' en achtervoegsel ', the' (gevouwen)."""
+    return tuple((fold(a) + " ", ", " + fold(a)) for a in articles if a.strip())
+
+
 def strip_article(folded: str, articles: Iterable[str] = DEFAULT_ARTICLES) -> str:
     """Verwijder een lidwoord aan het begin ('the beatles') of in de vorm 'beatles, the'."""
-    for article in articles:
-        a = fold(article)
-        if folded.startswith(a + " ") and len(folded) > len(a) + 1:
-            return folded[len(a) + 1 :]
-        if folded.endswith(", " + a):
-            return folded[: -(len(a) + 2)].rstrip()
+    for prefix, suffix in _article_affixes(tuple(articles)):
+        if folded.startswith(prefix) and len(folded) > len(prefix):
+            return folded[len(prefix) :]
+        if folded.endswith(suffix):
+            return folded[: -len(suffix)].rstrip()
     return folded
 
 

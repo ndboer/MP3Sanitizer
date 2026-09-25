@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -54,8 +55,9 @@ class Track:
     @property
     def folder(self) -> str:
         """Map relatief t.o.v. de hoofdmap; leeg als het bestand direct in de hoofdmap staat."""
-        try:
-            rel = self.path.parent.relative_to(self.root)
-        except ValueError:
-            return str(self.path.parent)
-        return "" if rel == Path(".") else str(rel)
+        # Stringvergelijking i.p.v. Path.relative_to: dit wordt per rij vaak aangeroepen.
+        parent, root = os.fspath(self.path.parent), os.fspath(self.root)
+        if parent == root:
+            return ""
+        prefix = root if root.endswith(os.sep) else root + os.sep
+        return parent[len(prefix) :] if parent.startswith(prefix) else parent
