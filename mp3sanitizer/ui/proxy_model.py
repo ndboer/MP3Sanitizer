@@ -13,9 +13,11 @@ from mp3sanitizer.ui.track_model import TrackTableModel
 
 class QuickFilter(StrEnum):
     ALL = "all"
+    CHANGED = "changed"
     PARSE_ERRORS = "parse_errors"
     NO_YEAR = "no_year"
     TAG_MISMATCH = "tag_mismatch"
+    INVALID = "invalid"
 
     @property
     def label(self) -> str:
@@ -29,9 +31,11 @@ class QuickFilter(StrEnum):
 
 _LABELS = {
     QuickFilter.ALL: "Alles",
+    QuickFilter.CHANGED: "Gewijzigd (niet opgeslagen)",
     QuickFilter.PARSE_ERRORS: "Alleen parse-fouten",
     QuickFilter.NO_YEAR: "Zonder jaar",
     QuickFilter.TAG_MISMATCH: "Tag-mismatch",
+    QuickFilter.INVALID: "Ongeldige namen",
 }
 
 
@@ -40,7 +44,7 @@ class TrackFilterProxy(QSortFilterProxyModel):
 
     ``dynamicSortFilter`` staat uit: anders filtert Qt bij elke ``dataChanged`` (bijv. elke
     batch ingelezen tags) alle rijen opnieuw. Wie data wijzigt waar een filter van afhangt,
-    roept ``refresh()`` aan.
+    roept ``refresh()`` aan (het hoofdvenster doet dat na elke bewerking).
     """
 
     def __init__(self, parent=None) -> None:
@@ -96,10 +100,16 @@ class TrackFilterProxy(QSortFilterProxyModel):
             case QuickFilter.PARSE_ERRORS:
                 if track.parse_status is not ParseStatus.ERROR:
                     return False
+            case QuickFilter.CHANGED:
+                if not model.is_changed(source_row):
+                    return False
             case QuickFilter.NO_YEAR:
-                if track.year is not None:
+                if model.year(source_row) is not None:
                     return False
             case QuickFilter.TAG_MISMATCH:
                 if not model.mismatches(source_row):
+                    return False
+            case QuickFilter.INVALID:
+                if not model.has_issues(source_row):
                     return False
         return not self._text or self._text in model.search_key(source_row)

@@ -1,4 +1,9 @@
-"""Tabelmodel voor de tracks (``QAbstractTableModel``)."""
+"""Tabelmodel voor de tracks (``QAbstractTableModel``).
+
+Alle weergave, sortering en filtering gebruikt de *effectieve* waarden: de geparste waarde uit
+de bestandsnaam, tenzij er een niet-opgeslagen wijziging is (``EditState``). Wijzigingen lopen
+via ``push_changes`` en daarmee via de ``QUndoStack``.
+"""
 
 from __future__ import annotations
 
@@ -6,24 +11,27 @@ from collections.abc import Callable, Iterable, Sequence
 from enum import IntEnum
 from typing import Any
 
-from PySide6.QtCore import (
-    QAbstractTableModel,
-    QModelIndex,
-    QPersistentModelIndex,
-    Qt,
-)
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPersistentModelIndex, Qt, Signal
+from PySide6.QtGui import QColor, QUndoStack
 
-from mp3sanitizer.core.models import AudioInfo, Field, ParseStatus, Track
-from mp3sanitizer.core.normalize import DEFAULT_ARTICLES, fold, sort_key
+from mp3sanitizer.core.edits import EditState
+from mp3sanitizer.core.models import AudioInfo, Field, FieldValue, ParseStatus, PendingChange, Track
+from mp3sanitizer.core.normalize import DEFAULT_ARTICLES, fold, natural_key, sort_key
+from mp3sanitizer.core.parser import format_stem
 from mp3sanitizer.core.tags import tag_mismatches
+from mp3sanitizer.core.validate import Issue, YearError, parse_year_input, text_issues
+from mp3sanitizer.ui.undo_commands import EditCommand
 
 TRACK_ROLE = Qt.ItemDataRole.UserRole + 1
 
 ERROR_COLOR = QColor("#d9534f")
 WARNING_COLOR = QColor("#e08a00")
+# Halfdoorzichtig, zodat het in zowel het lichte als het donkere thema leesbaar blijft.
+CHANGED_BACKGROUND = QColor(255, 190, 0, 70)
+INVALID_BACKGROUND = QColor(220, 40, 40, 90)
 
 type AnyIndex = QModelIndex | QPersistentModelIndex
+type Issues = dict[Field, tuple[Issue, ...]]
 
 
 class Col(IntEnum):
@@ -52,6 +60,11 @@ class Col(IntEnum):
     def optional(self) -> bool:
         return self >= Col.DURATION
 
+    @property
+    def field(self) -> Field | None:
+        """Het bewerkbare veld van deze kolom."""
+        return _EDITABLE.get(self)
+
     @classmethod
     def from_key(cls, key: str) -> Col | None:
         try:
@@ -75,10 +88,14 @@ _HEADERS = {
     Col.TAG_YEAR: "Tag-jaar",
 }
 
+_EDITABLE = {Col.ARTIST: Field.ARTIST, Col.TITLE: Field.TITLE, Col.YEAR: Field.YEAR}
+FIELD_COLUMN = {field: col for col, field in _EDITABLE.items()}
+FIELD_LABEL = {Field.ARTIST: "Artiest", Field.TITLE: "Titel", Field.YEAR: "Jaar"}
 _RIGHT_ALIGNED = {Col.YEAR, Col.DURATION, Col.BITRATE, Col.SIZE, Col.TAG_YEAR}
 _INFO_COLUMNS = {Col.DURATION, Col.BITRATE, Col.SIZE, Col.TAG_ARTIST, Col.TAG_TITLE, Col.TAG_YEAR}
 _TAG_FIELD = {Col.TAG_ARTIST: Field.ARTIST, Col.TAG_TITLE: Field.TITLE, Col.TAG_YEAR: Field.YEAR}
-_FIELD_LABEL = {Field.ARTIST: "artiest", Field.TITLE: "titel", Field.YEAR: "jaar"}
+_EMPTY_KEY = natural_key("")
+_NO_ISSUES: Issues = {}
 
 
 def format_duration(seconds: float | None) -> str:
@@ -100,35 +117,55 @@ def format_size(size: int | None) -> str:
     return f"{size / (1024 * 1024):.1f} MB"
 
 
-def status_text(track: Track, mismatches: Sequence[Field]) -> str:
-    match track.parse_status:
-        case ParseStatus.ERROR:
-            text = "Parse-fout"
-        case ParseStatus.NO_YEAR:
-            text = "Geen jaar"
-        case _:
-            text = "OK"
+def format_value(value: FieldValue) -> str:
+    return "" if value is None else str(value)
+
+
+def status_text(
+    parse_status: ParseStatus,
+    *,
+    changed: bool,
+    invalid: bool,
+    has_year: bool,
+    mismatches: Sequence[Field] = (),
+) -> str:
+    if changed:
+        text = "Gewijzigd · ongeldig" if invalid else "Gewijzigd"
+    elif parse_status is ParseStatus.ERROR:
+        text = "Parse-fout"
+    elif invalid:
+        text = "Ongeldig"
+    elif not has_year:
+        text = "Geen jaar"
+    else:
+        text = "OK"
     return text + " · tags ≠" if mismatches else text
 
 
 class TrackTableModel(QAbstractTableModel):
+    editsApplied = Signal()  # na elke toegepaste (of teruggedraaide) wijziging
+    editRejected = Signal(str)  # ongeldige invoer, met uitleg
+
     def __init__(self, articles: Iterable[str] = DEFAULT_ARTICLES, parent=None) -> None:
         super().__init__(parent)
         self._articles = tuple(articles)
         self._tracks: list[Track] = []
-        # Gecachete sleutels per track-id, zodat sorteren en filteren snel blijven.
-        self._artist_keys: list[str] = []
-        self._title_keys: list[str] = []
+        self.edits = EditState(self._tracks)
+        self.undo_stack: QUndoStack | None = None
+        # Gecachete afgeleide gegevens per track-id, zodat sorteren en filteren snel blijven.
+        self._artist_keys: list[tuple[str | int, ...]] = []
+        self._title_keys: list[tuple[str | int, ...]] = []
         self._folder_keys: list[str] = []
         self._search_keys: list[str] = []
         self._mismatches: list[tuple[Field, ...]] = []
+        self._issues: list[Issues] = []
         # _order[rij] = track-id; _rows[track-id] = rij
         self._order: list[int] = []
         self._rows: list[int] = []
         self._sort_col: Col | None = None
         self._sort_order = Qt.SortOrder.AscendingOrder
 
-    # --- toegang -------------------------------------------------------------------------
+    # --- toegang (op rij) ----------------------------------------------------------------
     @property
     def tracks(self) -> Sequence[Track]:
         """Alle tracks in id-volgorde (onafhankelijk van de sortering)."""
@@ -137,8 +174,20 @@ class TrackTableModel(QAbstractTableModel):
     def track(self, row: int) -> Track:
         return self._tracks[self._order[row]]
 
+    def track_id(self, row: int) -> int:
+        return self._order[row]
+
     def row_of(self, track_id: int) -> int:
         return self._rows[track_id]
+
+    def year(self, row: int) -> int | None:
+        return self.edits.year(self._order[row])
+
+    def is_changed(self, row: int) -> bool:
+        return self.edits.is_changed(self._order[row])
+
+    def has_issues(self, row: int) -> bool:
+        return bool(self._issues[self._order[row]])
 
     def mismatches(self, row: int) -> tuple[Field, ...]:
         return self._mismatches[self._order[row]]
@@ -150,7 +199,15 @@ class TrackTableModel(QAbstractTableModel):
     def parse_error_count(self) -> int:
         return sum(1 for t in self._tracks if t.parse_status is ParseStatus.ERROR)
 
-    # --- mutaties ------------------------------------------------------------------------
+    def changed_count(self) -> int:
+        return len(self.edits)
+
+    def target_filename(self, track_id: int) -> str:
+        e = self.edits
+        track = self._tracks[track_id]
+        return format_stem(e.artist(track_id), e.title(track_id), e.year(track_id)) + track.ext
+
+    # --- scannen / inlezen ---------------------------------------------------------------
     def clear(self) -> None:
         self.beginResetModel()
         for cache in (
@@ -162,8 +219,10 @@ class TrackTableModel(QAbstractTableModel):
             self._folder_keys,
             self._search_keys,
             self._mismatches,
+            self._issues,
         ):
             cache.clear()
+        self.edits.clear()
         self.endResetModel()
 
     def append_tracks(self, tracks: Sequence[Track], *, resort: bool = True) -> None:
@@ -181,11 +240,13 @@ class TrackTableModel(QAbstractTableModel):
             self._order.append(track.id)
             self._rows.append(len(self._rows))
             self._tracks.append(track)
-            self._artist_keys.append(sort_key(track.artist, self._articles))
-            self._title_keys.append(fold(track.title))
+            self._artist_keys.append(_EMPTY_KEY)
+            self._title_keys.append(_EMPTY_KEY)
             self._folder_keys.append(fold(track.folder))
-            self._search_keys.append(fold(f"{track.artist}\x00{track.title}\x00{track.filename}"))
+            self._search_keys.append("")
             self._mismatches.append(())
+            self._issues.append(_NO_ISSUES)
+            self._recompute(track.id)
         self.endInsertRows()
         if resort:
             self.resort()
@@ -195,18 +256,84 @@ class TrackTableModel(QAbstractTableModel):
         rows = []
         for track_id, info in infos:
             if 0 <= track_id < len(self._tracks):
-                track = self._tracks[track_id]
-                track.info = info
-                self._mismatches[track_id] = tuple(
-                    tag_mismatches(track.artist, track.title, track.year, info)
-                )
+                self._tracks[track_id].info = info
+                self._recompute_mismatches(track_id)
                 rows.append(self._rows[track_id])
         if rows:
             self.dataChanged.emit(self.index(min(rows), 0), self.index(max(rows), len(Col) - 1))
 
+    def _recompute(self, tid: int) -> None:
+        e = self.edits
+        artist, title = e.artist(tid), e.title(tid)
+        self._artist_keys[tid] = natural_key(sort_key(artist, self._articles))
+        self._title_keys[tid] = natural_key(fold(title))
+        self._search_keys[tid] = fold(f"{artist}\x00{title}\x00{self._tracks[tid].filename}")
+        issues = {}
+        for field, text in ((Field.ARTIST, artist), (Field.TITLE, title)):
+            found = text_issues(text)
+            if found:
+                issues[field] = found
+        self._issues[tid] = issues or _NO_ISSUES
+        self._recompute_mismatches(tid)
+
+    def _recompute_mismatches(self, tid: int) -> None:
+        e = self.edits
+        self._mismatches[tid] = tuple(
+            tag_mismatches(e.artist(tid), e.title(tid), e.year(tid), self._tracks[tid].info)
+        )
+
+    # --- wijzigingen ---------------------------------------------------------------------
+    def push_changes(self, changes: Sequence[PendingChange], text: str) -> bool:
+        """Voer wijzigingen uit als één undo-stap. ``False`` als er niets te doen was."""
+        changes = [c for c in changes if c.old != c.new]
+        if not changes:
+            return False
+        if self.undo_stack is not None:
+            self.undo_stack.push(EditCommand(self, changes, text))
+        else:
+            self.apply_changes(changes)
+        return True
+
+    def apply_changes(self, changes: Sequence[PendingChange], *, forward: bool = True) -> None:
+        """Pas wijzigingen direct toe. Normaal alleen aangeroepen door ``EditCommand``."""
+        touched = self.edits.apply(changes, forward=forward)
+        for tid in touched:
+            self._recompute(tid)
+        self._emit_rows_changed(touched)
+        self.editsApplied.emit()
+
+    def set_field(self, track_ids: Iterable[int], field: Field, value: FieldValue) -> bool:
+        """Bulk: zet één veld voor meerdere tracks (één undo-stap)."""
+        ids = list(track_ids)
+        changes = [c for tid in ids if (c := self.edits.change(tid, field, value, "bulk"))]
+        n = len({c.track_id for c in changes})
+        return self.push_changes(changes, f"{FIELD_LABEL[field]} invullen ({n} tracks)")
+
+    def swap_artist_title(self, track_ids: Iterable[int]) -> bool:
+        changes = self.edits.swap_changes(track_ids)
+        n = len(changes) // 2
+        return self.push_changes(changes, f"Wissel artiest ⇄ titel ({n} tracks)")
+
+    def revert(self, track_ids: Iterable[int]) -> bool:
+        changes = self.edits.revert_changes(track_ids)
+        n = len({c.track_id for c in changes})
+        return self.push_changes(changes, f"Terugdraaien ({n} tracks)")
+
+    def _emit_rows_changed(self, track_ids: Iterable[int]) -> None:
+        rows = sorted(self._rows[tid] for tid in track_ids)
+        if not rows:
+            return
+        last_col = len(Col) - 1
+        if len(rows) > 50:  # veel rijen: één bereik is goedkoper dan veel losse signalen
+            self.dataChanged.emit(self.index(rows[0], 0), self.index(rows[-1], last_col))
+            return
+        for row in rows:
+            self.dataChanged.emit(self.index(row, 0), self.index(row, last_col))
+
     # --- sorteren ------------------------------------------------------------------------
     # Het model sorteert zelf (één ``sorted`` op gecachete sleutels). Sorteren in de proxy zou
     # per vergelijking Python-``data()`` aanroepen en is bij 10.000 rijen seconden trager.
+    # Na een bewerking wordt niet automatisch hersorteerd: de rij blijft staan waar hij staat.
     @property
     def sort_column(self) -> Col | None:
         return self._sort_col
@@ -240,10 +367,10 @@ class TrackTableModel(QAbstractTableModel):
     def _sort_key_func(self, col: Col) -> Callable[[int], Any]:
         t = self._tracks
         artist, title, folder = self._artist_keys, self._title_keys, self._folder_keys
-        mism = self._mismatches
+        mism, e = self._mismatches, self.edits
 
-        def info_value(attr: str) -> Callable[[int], tuple[float, str, str]]:
-            def key(i: int) -> tuple[float, str, str]:
+        def info_value(attr: str) -> Callable[[int], tuple[Any, ...]]:
+            def key(i: int) -> tuple[Any, ...]:
                 info = t[i].info
                 value = -1.0 if info is None else float(getattr(info, attr) or 0)
                 return (value, artist[i], title[i])
@@ -256,18 +383,24 @@ class TrackTableModel(QAbstractTableModel):
 
         match col:
             case Col.STATUS:
-                return lambda i: (t[i].parse_status, len(mism[i]), artist[i], title[i])
+                return lambda i: (
+                    not e.is_changed(i),
+                    t[i].parse_status,
+                    len(mism[i]),
+                    artist[i],
+                    title[i],
+                )
             case Col.ARTIST:
                 # Lege artiest (parse-fout) onderaan in plaats van bovenaan.
-                return lambda i: (not artist[i], artist[i], title[i])
+                return lambda i: (artist[i] == _EMPTY_KEY, artist[i], title[i])
             case Col.TITLE:
                 return lambda i: (title[i], artist[i])
             case Col.YEAR:
-                return lambda i: (t[i].year or 0, artist[i], title[i])
+                return lambda i: (e.year(i) or 0, artist[i], title[i])
             case Col.FOLDER:
                 return lambda i: (folder[i], artist[i], title[i])
             case Col.FILENAME:
-                return lambda i: fold(t[i].filename)
+                return lambda i: natural_key(fold(t[i].filename))
             case Col.DURATION:
                 return info_value("duration_s")
             case Col.BITRATE:
@@ -277,9 +410,9 @@ class TrackTableModel(QAbstractTableModel):
             case Col.TAG_YEAR:
                 return info_value("tag_year")
             case Col.TAG_ARTIST:
-                return lambda i: sort_key(tag_text(i, "tag_artist"), self._articles)
+                return lambda i: natural_key(sort_key(tag_text(i, "tag_artist"), self._articles))
             case Col.TAG_TITLE:
-                return lambda i: fold(tag_text(i, "tag_title"))
+                return lambda i: natural_key(fold(tag_text(i, "tag_title")))
 
     # --- QAbstractTableModel -------------------------------------------------------------
     def rowCount(self, parent: AnyIndex = QModelIndex()) -> int:  # noqa: B008
@@ -301,7 +434,10 @@ class TrackTableModel(QAbstractTableModel):
     def flags(self, index: AnyIndex) -> Qt.ItemFlag:
         if not index.isValid():
             return Qt.ItemFlag.NoItemFlags
-        return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+        flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+        if Col(index.column()) in _EDITABLE:
+            flags |= Qt.ItemFlag.ItemIsEditable
+        return flags
 
     def data(self, index: AnyIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
         if not index.isValid():
@@ -311,30 +447,63 @@ class TrackTableModel(QAbstractTableModel):
         track = self._tracks[tid]
         if role == Qt.ItemDataRole.DisplayRole:
             return self._display(track, tid, col)
+        if role == Qt.ItemDataRole.EditRole:
+            field = col.field
+            return format_value(self.edits.value(tid, field)) if field else None
         if role == TRACK_ROLE:
             return track
         if role == Qt.ItemDataRole.TextAlignmentRole and col in _RIGHT_ALIGNED:
             return int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        if role == Qt.ItemDataRole.BackgroundRole:
+            return self._background(tid, col)
         if role == Qt.ItemDataRole.ForegroundRole:
             return self._foreground(track, tid, col)
         if role == Qt.ItemDataRole.ToolTipRole:
             return self._tooltip(track, tid, col)
         return None
 
+    def setData(self, index: AnyIndex, value: Any, role: int = Qt.ItemDataRole.EditRole) -> bool:
+        if not index.isValid() or role != Qt.ItemDataRole.EditRole:
+            return False
+        field = Col(index.column()).field
+        if field is None:
+            return False
+        tid = self._order[index.row()]
+        text = "" if value is None else str(value)
+        new: FieldValue
+        if field is Field.YEAR:
+            try:
+                new = parse_year_input(text)
+            except YearError as exc:
+                self.editRejected.emit(str(exc))
+                return False
+        else:
+            new = " ".join(text.split())  # spaties aan de randen en dubbele spaties weg
+            if not new:
+                self.editRejected.emit(f"{FIELD_LABEL[field]} mag niet leeg zijn")
+                return False
+        change = self.edits.change(tid, field, new)
+        if change is None:
+            return True
+        return self.push_changes([change], f"{FIELD_LABEL[field]} wijzigen")
+
     # --- rollen --------------------------------------------------------------------------
     def _display(self, track: Track, tid: int, col: Col) -> str:
         if col in _INFO_COLUMNS and track.info is None:
             return "…"
         info = track.info
+        e = self.edits
         match col:
             case Col.STATUS:
-                return status_text(track, self._mismatches[tid])
-            case Col.ARTIST:
-                return track.artist
-            case Col.TITLE:
-                return track.title
-            case Col.YEAR:
-                return "" if track.year is None else str(track.year)
+                return status_text(
+                    track.parse_status,
+                    changed=e.is_changed(tid),
+                    invalid=bool(self._issues[tid]),
+                    has_year=e.year(tid) is not None,
+                    mismatches=self._mismatches[tid],
+                )
+            case Col.ARTIST | Col.TITLE | Col.YEAR:
+                return format_value(e.value(tid, _EDITABLE[col]))
             case Col.FOLDER:
                 return track.folder
             case Col.FILENAME:
@@ -353,9 +522,21 @@ class TrackTableModel(QAbstractTableModel):
                 return str(info.tag_year) if info and info.tag_year else ""
         return ""
 
+    def _background(self, tid: int, col: Col) -> QColor | None:
+        field = col.field
+        if field is None:
+            return None
+        if field in self._issues[tid]:
+            return INVALID_BACKGROUND
+        if self.edits.is_changed(tid, field):
+            return CHANGED_BACKGROUND
+        return None
+
     def _foreground(self, track: Track, tid: int, col: Col) -> QColor | None:
         if col == Col.STATUS:
-            if track.parse_status is ParseStatus.ERROR:
+            if self._issues[tid] or (
+                track.parse_status is ParseStatus.ERROR and not self.edits.is_changed(tid)
+            ):
                 return ERROR_COLOR
             if self._mismatches[tid]:
                 return WARNING_COLOR
@@ -364,23 +545,39 @@ class TrackTableModel(QAbstractTableModel):
         return None
 
     def _tooltip(self, track: Track, tid: int, col: Col) -> str | None:
+        e = self.edits
         if col == Col.STATUS:
             lines = []
+            if e.is_changed(tid):
+                lines.append(f"Nieuwe naam: {self.target_filename(tid)}")
             if track.parse_status is ParseStatus.ERROR:
                 lines.append("Bestandsnaam volgt niet het patroon 'Artiest - Titel (Jaar)'.")
+            for field, issues in self._issues[tid].items():
+                for issue in issues:
+                    lines.append(f"{FIELD_LABEL[field]}: {issue.message}")
             mism = self._mismatches[tid]
             if mism and track.info:
                 lines.append("Tags wijken af van de bestandsnaam:")
-                values = {
-                    Field.ARTIST: (track.info.tag_artist, track.artist),
-                    Field.TITLE: (track.info.tag_title, track.title),
-                    Field.YEAR: (track.info.tag_year, track.year),
+                tags = {
+                    Field.ARTIST: track.info.tag_artist,
+                    Field.TITLE: track.info.tag_title,
+                    Field.YEAR: track.info.tag_year,
                 }
                 for f in mism:
-                    tag, name = values[f]
-                    lines.append(f"  {_FIELD_LABEL[f]}: tag '{tag}' ≠ naam '{name}'")
+                    lines.append(
+                        f"  {FIELD_LABEL[f].lower()}: tag '{tags[f]}' ≠ naam '{e.value(tid, f)}'"
+                    )
             if track.info and track.info.error:
                 lines.append(f"Kon bestand niet lezen: {track.info.error}")
+            return "\n".join(lines) or None
+        field = col.field
+        if field is not None:
+            lines = [
+                f"{FIELD_LABEL[field]}: {issue.message}"
+                for issue in self._issues[tid].get(field, ())
+            ]
+            if e.is_changed(tid, field):
+                lines.append(f"Origineel: {format_value(track.original(field)) or '(leeg)'}")
             return "\n".join(lines) or None
         if col in (Col.FOLDER, Col.FILENAME):
             return str(track.path)
