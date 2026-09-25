@@ -146,7 +146,8 @@ def test_journal_files_with_version(store, music):
     a = _touch(music / "a.mp3")
     _, journal = run_save([RenamePlan(0, a, music / "b.mp3")], store, music, VERSION)
     data = json.loads(store.json_path(journal.batch_id).read_text(encoding="utf-8"))
-    assert data["schema_version"] == 1
+    assert data["schema_version"] == 2
+    assert data["entries"][0]["app_version"] == VERSION  # versie per entry
     assert data["app_version"] == VERSION
     assert data["finished"] is True
     assert data["entries"][0]["src"] == str(a)

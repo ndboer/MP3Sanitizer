@@ -12,8 +12,9 @@ dist/
 *.spec
 !mp3sanitizer.spec
 
-# Gegenereerd door hatch-vcs
+# Gegenereerd: versie (hatch-vcs) en buildinfo (mp3sanitizer.spec)
 mp3sanitizer/_version.py
+mp3sanitizer/_build_info.py
 
 # Gebruikersconfig, logs en testaudio horen niet in de repo
 *.log

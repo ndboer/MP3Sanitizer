@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
+from mp3sanitizer.core import migrations
 from mp3sanitizer.core.normalize import DEFAULT_ARTICLES
 from mp3sanitizer.core.scanner import DEFAULT_EXTENSIONS
 from mp3sanitizer.core.storage import LoadResult, load_document, save_document
@@ -53,6 +54,8 @@ class Settings:
     dup_ignore_year: bool = True
     dup_ignore_versions: bool = False
     dup_use_duration: bool = False
+    # Updatecheck bij het opstarten (alleen een melding; nooit automatisch downloaden)
+    check_updates: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Settings:
@@ -93,7 +96,7 @@ class SettingsStore:
     @classmethod
     def load(cls, config_dir: Path) -> SettingsStore:
         path = config_dir / SETTINGS_FILENAME
-        result = load_document(path, SETTINGS_SCHEMA_VERSION)
+        result = load_document(path, SETTINGS_SCHEMA_VERSION, migrations.SETTINGS)
         settings = Settings.from_dict(result.data) if result.data else Settings()
         return cls(path, settings, result)
 

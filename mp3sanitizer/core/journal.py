@@ -18,14 +18,15 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, TextIO
 
+from mp3sanitizer.core import migrations
 from mp3sanitizer.core.models import RenamePlan, TagValues
 from mp3sanitizer.core.storage import LoadStatus, Migration, load_document, save_document
 
 log = logging.getLogger(__name__)
 
-JOURNAL_SCHEMA_VERSION = 1
-# Migraties per schemaversie: JOURNAL_MIGRATIONS[n] zet schema n om naar n + 1.
-JOURNAL_MIGRATIONS: Mapping[int, Migration] = {}
+# 2: appversie per entry (zie migrations.migrate_journal_1_to_2)
+JOURNAL_SCHEMA_VERSION = 2
+JOURNAL_MIGRATIONS: Mapping[int, Migration] = migrations.JOURNAL
 
 
 class Op(StrEnum):
@@ -53,6 +54,7 @@ class JournalEntry:
     track_id: int | None = None
     tags_before: dict[str, str | None] | None = None
     tags_after: dict[str, str | None] | None = None
+    app_version: str = ""  # versie die deze bewerking uitvoerde
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -70,6 +72,7 @@ class JournalEntry:
             track_id=data.get("track_id"),
             tags_before=data.get("tags_before"),
             tags_after=data.get("tags_after"),
+            app_version=str(data.get("app_version", "")),
         )
 
 
@@ -149,6 +152,8 @@ class JournalWriter:
         return self
 
     def add(self, entry: JournalEntry) -> None:
+        if not entry.app_version:
+            entry.app_version = self.journal.app_version
         self.journal.entries.append(entry)
         if self._log is not None:
             status = "OK  " if entry.ok else "FOUT"
@@ -207,10 +212,13 @@ class JournalStore:
                 log.warning(result.message)
             return None
         try:
-            return Journal.from_dict(result.data)
+            journal = Journal.from_dict(result.data)
         except (KeyError, ValueError, TypeError) as exc:
             log.warning("Journaal %s onleesbaar: %s", path.name, exc)
             return None
+        if result.status is LoadStatus.MIGRATED:
+            self.save(journal)  # eenmalig migreren; de .bak bevat het origineel
+        return journal
 
     def all(self) -> list[Journal]:
         """Alle leesbare journalen, nieuwste eerst."""

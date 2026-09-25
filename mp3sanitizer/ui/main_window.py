@@ -43,7 +43,7 @@ from mp3sanitizer.core.export import export_csv
 from mp3sanitizer.core.journal import Journal, JournalStore
 from mp3sanitizer.core.models import Field, ParseStatus, RenamePlan
 from mp3sanitizer.core.musicbrainz import MusicBrainzCache, MusicBrainzClient
-from mp3sanitizer.core.paths import data_dir
+from mp3sanitizer.core.paths import data_dir, log_dir
 from mp3sanitizer.core.planner import DecadeStyle, FolderTemplate, PlanInput, folder_for_year
 from mp3sanitizer.core.project import (
     PROJECT_SUFFIX,
@@ -55,6 +55,8 @@ from mp3sanitizer.core.project import (
 )
 from mp3sanitizer.core.rules.config import RulesStore
 from mp3sanitizer.core.settings import SettingsStore
+from mp3sanitizer.core.update_check import UpdateResult, check_for_update
+from mp3sanitizer.ui.about_dialog import AboutDialog
 from mp3sanitizer.ui.artist_search import ArtistDialog, MusicBrainzDialog
 from mp3sanitizer.ui.bulk_edit_dialog import BulkEditDialog
 from mp3sanitizer.ui.corrections_dialog import CorrectionsDialog, Scope
@@ -121,6 +123,11 @@ class MainWindow(QMainWindow):
         # Tests vervangen dit door een client zonder netwerk.
         self.mb_client_factory = self.musicbrainz_client
         self._jobs = JobRunner(self._pool, self)
+        # Tests vervangen dit door een check zonder netwerk.
+        self.update_checker = check_for_update
+        self.show_update_dialogs = True
+        self.last_update_result: UpdateResult | None = None
+        self._update_manual = True
         self.last_report = ""
         self._reload_after_batch = False
         self._pending_project = None
@@ -167,6 +174,8 @@ class MainWindow(QMainWindow):
         self._set_busy(False)
         self._apply_folder_rule()
 
+        if self._settings.check_updates:  # standaard uit
+            QTimer.singleShot(2000, lambda: self.check_updates(manual=False))
         if self._settings.last_root and Path(self._settings.last_root).is_dir():
             QTimer.singleShot(0, lambda: self.start_scan(Path(self._settings.last_root or "")))
 
@@ -249,6 +258,16 @@ class MainWindow(QMainWindow):
         self.act_open_session.triggered.connect(self.open_session)
         self.act_export = QAction("&Exporteren naar CSV…", self)
         self.act_export.triggered.connect(self.export_csv)
+        self.act_about = QAction("&Over Mp3Sanitizer…", self)
+        self.act_about.triggered.connect(self.show_about)
+        self.act_check_updates = QAction("Controleren op &updates…", self)
+        self.act_check_updates.triggered.connect(lambda: self.check_updates(manual=True))
+        self.act_auto_updates = QAction("Automatisch controleren bij &opstarten", self)
+        self.act_auto_updates.setCheckable(True)
+        self.act_auto_updates.setChecked(self._settings.check_updates)
+        self.act_auto_updates.toggled.connect(self._toggle_update_check)
+        self.act_log_folder = QAction("&Map met logbestanden openen", self)
+        self.act_log_folder.triggered.connect(self.open_log_folder)
         self.act_reveal = QAction("Openen in &Verkenner", self)
         self.act_reveal.setShortcut(QKeySequence("Ctrl+E"))
         self.act_reveal.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
@@ -386,6 +405,13 @@ class MainWindow(QMainWindow):
         self._columns_menu = QMenu("&Kolommen", self)
         self._columns_menu.addActions(list(self.column_actions.values()))
         m_view.addMenu(self._columns_menu)
+
+        m_help = mb.addMenu("&Help")
+        m_help.addAction(self.act_check_updates)
+        m_help.addAction(self.act_auto_updates)
+        m_help.addAction(self.act_log_folder)
+        m_help.addSeparator()
+        m_help.addAction(self.act_about)
 
     def _build_statusbar(self) -> None:
         sb = self.statusBar()
@@ -583,6 +609,47 @@ class MainWindow(QMainWindow):
         chosen = dialog.chosen if dialog.exec() else None
         if chosen is not None and self.model.set_field(ids, Field.ARTIST, chosen.name):
             self._flash(self.undo_stack.undoText())
+
+    # --- help / updates ------------------------------------------------------------------
+    def show_about(self) -> None:
+        AboutDialog(self).exec()
+
+    def open_log_folder(self) -> None:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_dir())))
+
+    def _toggle_update_check(self, on: bool) -> None:
+        self._settings.check_updates = on
+
+    def check_updates(self, *, manual: bool = True) -> None:
+        """Vraag de laatste release op. Bij ``manual=False`` alleen melden als er iets nieuws is."""
+        self._update_manual = manual
+        if manual:
+            self._flash("Controleren op updates…")
+        self._jobs.run("update", FunctionWorker(self.update_checker), self._on_update_result)
+
+    def _on_update_result(self, result: object) -> None:
+        assert isinstance(result, UpdateResult)
+        self.last_update_result = result
+        if result.newer:
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setWindowTitle(APP_TITLE)
+            box.setTextFormat(Qt.TextFormat.RichText)
+            box.setText(
+                f"Er is een nieuwere versie beschikbaar: <b>{result.latest}</b> "
+                f"(je gebruikt {__version__}).<br><br>"
+                f'<a href="{result.url}">Bekijk de release</a>. '
+                "Er wordt niets automatisch gedownload of geïnstalleerd."
+            )
+            if self.show_update_dialogs:
+                box.exec()
+            else:
+                self._flash(f"Nieuwere versie beschikbaar: {result.latest}", 15000)
+        elif self._update_manual:
+            if result.error:
+                self._flash(f"Updatecheck mislukt: {result.error}", 10000)
+            else:
+                self._flash(f"Je gebruikt de nieuwste versie ({__version__})", 8000)
 
     # --- Verkenner, CSV en sessies ------------------------------------------------------
     def reveal_in_explorer(self) -> None:

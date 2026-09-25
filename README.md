@@ -4,18 +4,26 @@ Desktop-applicatie (Python + PySide6) om een muziekcollectie van duizenden audio
 inventariseren, op te schonen en te hernoemen op basis van de bestandsnaam
 `<Artiest> - <Titel> (<Jaar>)`.
 
-> In ontwikkeling (0.x). Zie [CHANGELOG.md](CHANGELOG.md) voor wat er per versie klaar is.
+Zie [CHANGELOG.md](CHANGELOG.md) voor wat er per versie is veranderd.
 
 ## Installatie
 
-Vereist: [uv](https://docs.astral.sh/uv/) en Git. uv installeert zelf een passende Python (3.12+).
+**Kant-en-klaar (Windows):** download `mp3sanitizer-X.Y.Z-win64.zip` bij de
+[releases](https://github.com/ndboer/MP3Sanitizer/releases), pak uit en start
+`Mp3Sanitizer\Mp3Sanitizer.exe`.
+
+**Vanaf de broncode:** vereist [uv](https://docs.astral.sh/uv/) en Git; uv installeert zelf een
+passende Python (3.12+).
 
 ```bash
-git clone <repo-url> mp3sanitizer
-cd mp3sanitizer
+git clone https://github.com/ndboer/MP3Sanitizer.git
+cd MP3Sanitizer
 uv sync
 uv run mp3sanitizer
 ```
+
+`uv run mp3sanitizer --version` toont versie, commit en bibliotheekversies zonder de GUI te
+starten.
 
 De versie komt uit de Git-tag (hatch-vcs). Na het wisselen van tag of branch:
 `uv sync --reinstall-package mp3sanitizer`, zodat de getoonde versie klopt.
@@ -182,8 +190,30 @@ Elke batch krijgt een journaal in `%LOCALAPPDATA%\Mp3Sanitizer\journal\`: `<batc
 (met appversie, gebruikt voor terugdraaien) en `<batch>.log` (leesbaar, wordt tijdens het
 uitvoeren bijgeschreven).
 
-Instellingen staan in `%APPDATA%\Mp3Sanitizer\settings.json`, het logbestand in
-`%LOCALAPPDATA%\Mp3Sanitizer\logs\`.
+### Help en updates
+
+- **Help → Over Mp3Sanitizer…** toont versie, commit, builddatum en de versies van Python,
+  PySide6 en mutagen; **Kopieer info** zet dit op het klembord voor een bugmelding.
+- **Help → Controleren op updates…** vraagt de laatste release op en meldt alleen of er een
+  nieuwere is. Automatisch controleren bij opstarten staat standaard **uit** (Help-menu). Er wordt
+  nooit iets gedownload of geïnstalleerd.
+- **Help → Map met logbestanden openen**: de eerste regel van elk logbestand bevat de appversie.
+
+### Bestanden van de app
+
+| Bestand | Locatie |
+|---|---|
+| Instellingen | `%APPDATA%\Mp3Sanitizer\settings.json` |
+| Regels en opschoonprofielen | `%APPDATA%\Mp3Sanitizer\rules.json` |
+| Journaal per batch | `%LOCALAPPDATA%\Mp3Sanitizer\journal\` |
+| MusicBrainz-cache | `%LOCALAPPDATA%\Mp3Sanitizer\musicbrainz_cache.json` |
+| Logbestanden (roterend) | `%LOCALAPPDATA%\Mp3Sanitizer\logs\` |
+| Sessies | waar je ze opslaat (`*.mp3s.json`) |
+
+Elk JSON-bestand bevat `schema_version`. Is het ouder, dan wordt het stap voor stap gemigreerd
+(na een back-up `<naam>.v<oud>.bak`); is het nieuwer dan deze versie kent, dan wordt het niet
+overschreven en meldt de app dat; is het corrupt, dan gebruikt de app standaardwaarden, bewaart
+het bestand als `<naam>.corrupt` en meldt dat.
 
 ## Ontwikkeling
 
@@ -195,10 +225,46 @@ uv run ruff check .
 uv run ruff format .
 ```
 
-- `mp3sanitizer/core/`: pure Python (parser, normalisatie, scanner, tags, opslag), zonder Qt.
-- `mp3sanitizer/ui/`: PySide6-interface (model/view, workers).
+- `mp3sanitizer/core/`: pure Python zonder Qt (parser, normalisatie, regels, duplicaten,
+  planner, executor, journaal, migraties, MusicBrainz, instellingen).
+- `mp3sanitizer/ui/`: PySide6-interface (model/view, dialogen, achtergrond-workers).
 - Werkwijze: `feat/<naam>` en `fix/<naam>`-branches, Conventional Commits, mergen in `main` als
-  alle tests slagen.
+  alle tests slagen. Nieuwe changelogregels komen onder `## [Unreleased]`.
+- Een nieuwe schemaversie van een JSON-bestand: zie `mp3sanitizer/core/migrations.py`
+  (migratie + fixture in `tests/fixtures/` + test).
+
+### Bouwen
+
+```bash
+uv run pyinstaller mp3sanitizer.spec --noconfirm
+```
+
+Dit maakt `dist\Mp3Sanitizer\` (één map, zonder console). De spec schrijft vooraf
+`mp3sanitizer/_build_info.py` met commit-hash en builddatum. Controle van een build:
+`dist\Mp3Sanitizer\Mp3Sanitizer.exe --smoke-test uitvoer.txt` (start Qt zonder venster, controleert
+ook de multimedia-plugin en schrijft de versie-info weg).
+
+### Releasen
+
+Versies volgen Semantic Versioning; de enige bron is de Git-tag `vX.Y.Z`.
+
+```bash
+uv run python scripts/release.py release X.Y.Z --dry-run
+uv run python scripts/release.py release X.Y.Z --push
+```
+
+Het script:
+
+1. controleert dat je op `main` zit, de werkboom schoon is, de versie hoger is dan de laatste
+   tag, en dat tests en ruff slagen;
+2. zet in `CHANGELOG.md` de sectie "Unreleased" om naar `[X.Y.Z] - datum` en commit dat als
+   `chore(release): vX.Y.Z`;
+3. maakt de tag `vX.Y.Z`;
+4. bouwt met PyInstaller, draait de smoke-test en verpakt `dist\mp3sanitizer-X.Y.Z-win64.zip`;
+5. met `--push`: `git push --follow-tags`.
+
+Op GitHub draait bij elke push ruff + pytest (Windows). Bij een `v*`-tag bouwt de CI de zip
+opnieuw en publiceert die als release-asset, met de changelogsectie als releasetekst.
 
 ## Licentie
 
