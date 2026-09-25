@@ -74,6 +74,14 @@ def test_settings_from_dict_ignores_garbage():
     assert s.visible_columns == Settings().visible_columns
 
 
+def test_settings_types():
+    s = Settings.from_dict({"volume": True, "autoplay_next": 1, "write_tags": True})
+    assert s.volume == 80  # bool is geen geldig getal
+    assert s.autoplay_next is False
+    assert s.write_tags is True
+    assert Settings.from_dict({"volume": 35}).volume == 35
+
+
 def test_settings_store_roundtrip(tmp_path):
     store = SettingsStore.load(tmp_path)
     assert store.load_result.status is LoadStatus.MISSING

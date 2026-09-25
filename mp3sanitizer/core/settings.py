@@ -41,6 +41,9 @@ class Settings:
     collision_policy: str = "skip"  # "skip" | "suffix" | "mark_duplicate"
     write_tags: bool = False
     cleanup_empty_dirs: bool = True
+    # Afspelen
+    volume: int = 80  # procent
+    autoplay_next: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Settings:
@@ -54,6 +57,8 @@ class Settings:
             expected = getattr(default, f.name)
             if isinstance(expected, bool):
                 ok = isinstance(value, bool)
+            elif isinstance(expected, int):
+                ok = isinstance(value, int) and not isinstance(value, bool)
             elif isinstance(expected, list):
                 ok = isinstance(value, list) and all(isinstance(v, str) for v in value)
             elif isinstance(expected, str):
