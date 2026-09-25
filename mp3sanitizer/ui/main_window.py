@@ -41,14 +41,17 @@ from mp3sanitizer.core.models import Field, ParseStatus, RenamePlan
 from mp3sanitizer.core.musicbrainz import MusicBrainzCache, MusicBrainzClient
 from mp3sanitizer.core.paths import data_dir
 from mp3sanitizer.core.planner import DecadeStyle, FolderTemplate, PlanInput, folder_for_year
+from mp3sanitizer.core.rules.config import RulesStore
 from mp3sanitizer.core.settings import SettingsStore
 from mp3sanitizer.ui.artist_search import ArtistDialog, MusicBrainzDialog
 from mp3sanitizer.ui.bulk_edit_dialog import BulkEditDialog
+from mp3sanitizer.ui.corrections_dialog import CorrectionsDialog, Scope
 from mp3sanitizer.ui.delegates import TrackEditDelegate
 from mp3sanitizer.ui.delete_dialog import DeleteDialog
 from mp3sanitizer.ui.duplicates_view import DuplicatesDialog
 from mp3sanitizer.ui.player import SEEK_STEP_MS, MiniPlayer, Player, next_in_selection
 from mp3sanitizer.ui.proxy_model import QuickFilter, TrackFilterProxy
+from mp3sanitizer.ui.rule_editor import RuleEditorDialog
 from mp3sanitizer.ui.save_dialog import SavePreviewDialog, relative
 from mp3sanitizer.ui.track_model import FIELD_COLUMN, Col, TrackTableModel
 from mp3sanitizer.ui.workers import (
@@ -90,12 +93,15 @@ class MainWindow(QMainWindow):
         store: SettingsStore,
         pool: QThreadPool | None = None,
         journal_store: JournalStore | None = None,
+        rules_store: RulesStore | None = None,
     ) -> None:
         super().__init__()
         self._store = store
         self._settings = store.settings
         self._pool = pool or QThreadPool.globalInstance()
         self.journals = journal_store or JournalStore(data_dir() / "journal")
+        # rules.json staat naast settings.json in de config-map.
+        self.rules = rules_store or RulesStore.load(store.path.parent)
         self._batch_worker: SaveWorker | UndoWorker | DeleteWorker | None = None
         # None = echte Prullenbak (send2trash); tests vervangen dit.
         self.trash_function: Trash | None = None
@@ -227,6 +233,12 @@ class MainWindow(QMainWindow):
         self.act_artist_overview = QAction("Artiesten&overzicht en voorstellen…", self)
         self.act_artist_overview.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.act_artist_overview.triggered.connect(lambda: self.open_artist_dialog(overview=True))
+        self.act_corrections = QAction("&Batch-correcties…", self)
+        self.act_corrections.setShortcut(QKeySequence("Ctrl+K"))
+        self.act_corrections.setToolTip("Opschoonregels via een preview toepassen (Ctrl+K)")
+        self.act_corrections.triggered.connect(self.open_corrections)
+        self.act_rule_editor = QAction("&Vervangingsregels…", self)
+        self.act_rule_editor.triggered.connect(self.open_rule_editor)
         self.act_duplicates = QAction("&Duplicaten zoeken…", self)
         self.act_duplicates.setShortcut(QKeySequence("Ctrl+D"))
         self.act_duplicates.triggered.connect(self.open_duplicates)
@@ -324,6 +336,9 @@ class MainWindow(QMainWindow):
         m_edit.addAction(self.act_artists)
         m_edit.addAction(self.act_artist_overview)
         m_edit.addAction(self.act_duplicates)
+        m_edit.addSeparator()
+        m_edit.addAction(self.act_corrections)
+        m_edit.addAction(self.act_rule_editor)
         m_edit.addSeparator()
         m_edit.addAction(self.act_revert_all)
 
@@ -537,6 +552,50 @@ class MainWindow(QMainWindow):
         chosen = dialog.chosen if dialog.exec() else None
         if chosen is not None and self.model.set_field(ids, Field.ARTIST, chosen.name):
             self._flash(self.undo_stack.undoText())
+
+    # --- batch-correcties ----------------------------------------------------------------
+    def visible_track_ids(self) -> list[int]:
+        proxy = self.proxy
+        return [
+            self.model.track_id(proxy.mapToSource(proxy.index(r, 0)).row())
+            for r in range(proxy.rowCount())
+        ]
+
+    def correction_scopes(self) -> dict[Scope, list[int]]:
+        live = [t.id for t in self.model.tracks if not self.model.is_deleted_id(t.id)]
+        return {
+            Scope.ALL: live,
+            Scope.FILTER: self.visible_track_ids(),
+            Scope.SELECTION: self.selected_track_ids(),
+        }
+
+    def open_corrections(self) -> None:
+        if not self.model.rowCount():
+            return
+        dialog = CorrectionsDialog(
+            self.model,
+            self.rules.config,
+            self.correction_scopes(),
+            self._pool,
+            self._settings.articles,
+            self,
+        )
+        dialog.exec()
+        self._save_rules()
+        if dialog.applied:
+            self._flash(self.undo_stack.undoText() + " — opslaan met Ctrl+S")
+
+    def open_rule_editor(self) -> None:
+        editor = RuleEditorDialog(self.rules.config.replacement_rules, self)
+        if editor.exec():
+            self.rules.config.replacement_rules = editor.rules
+            self._save_rules()
+
+    def _save_rules(self) -> None:
+        try:
+            self.rules.save()
+        except OSError:
+            log.exception("Regels opslaan mislukt")
 
     # --- duplicaten ----------------------------------------------------------------------
     def duplicate_options(self) -> DupOptions:
@@ -1046,7 +1105,8 @@ class MainWindow(QMainWindow):
 
     # --- afsluiten -----------------------------------------------------------------------
     def show_load_messages(self, parent: QWidget | None = None) -> None:
-        msg = self._store.load_result.message
+        msgs = [m for m in (self._store.load_result.message, self.rules.load_result.message) if m]
+        msg = "\n\n".join(msgs)
         if msg:
             QMessageBox.warning(parent or self, "Instellingen", msg)
 
@@ -1067,4 +1127,5 @@ class MainWindow(QMainWindow):
             self._store.save()
         except OSError:
             log.exception("Instellingen opslaan mislukt")
+        self._save_rules()
         super().closeEvent(event)

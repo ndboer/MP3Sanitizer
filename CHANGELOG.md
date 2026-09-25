@@ -7,6 +7,22 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-25
+
+### Added
+- Batch-correcties (Ctrl+K) via het gedeelde preview-dialoog, toegepast als één undo-stap;
+  scope: hele collectie, huidige filter of selectie; opschoonprofielen (combinaties van regels).
+- 9a Afkortingen naar hoofdletters (letters met punten, vaste lijst, uitzonderingen).
+- 9b Featuring normaliseren (`ft.`/`feat.`), ook in haakjes; optioneel naar artiest of titel.
+- 9c Eigen vervangingsregels met regeleditor (volgorde, testveld, regex-validatie,
+  import/export) en uitschakelbare standaardregels.
+- 9d Romeinse cijfers naar hoofdletters met bescherming tegen valse positieven.
+- 9e Title Case, spaties opschonen, jaar uit tag, "Artiest, The" ↔ "The Artiest".
+- Regelinstellingen en profielen in `rules.json` met `schema_version`.
+
+### Changed
+- pre-commit gebruikt dezelfde ruff-versie als `uv.lock`.
+
 ## [0.7.0] - 2026-09-25
 
 ### Added
