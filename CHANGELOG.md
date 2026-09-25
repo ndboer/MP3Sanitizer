@@ -7,6 +7,19 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Added
+- Over-dialoog (Help) met versie, commit-hash, builddatum en de versies van Python, PySide6 en
+  mutagen, plus "Kopieer info" voor bugmeldingen.
+- Optionele updatecheck via de GitHub releases-API (standaard uit): alleen een melding, nooit
+  automatisch downloaden of installeren.
+- `mp3sanitizer --version` en `--smoke-test` (controle van een build, inclusief multimedia).
+- Schema-migraties per bestandssoort (`core/migrations.py`) met fixture-tests; journaal
+  schema 2 legt de appversie per journaalregel vast. "Laatste batch terugdraaien" werkt ook
+  voor journalen van oudere versies.
+- PyInstaller-spec (`mp3sanitizer.spec`, één map) met buildinfo.
+- Releasescript `scripts/release.py` (controles, changelog, tag, build, zip).
+- CI: bij een `v*`-tag automatisch bouwen en de zip als release-asset publiceren.
+
 ## [0.9.0] - 2026-09-25
 
 ### Added
