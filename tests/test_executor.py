@@ -172,7 +172,7 @@ def test_undo_roundtrip_with_moves_swaps_and_dirs(store, music):
     assert (music / "oud" / "A.mp3").read_bytes() == b"A"
     assert (music / "oud" / "B.mp3").read_bytes() == b"B"
     assert (music / "oud" / "c.mp3").read_bytes() == b"C"
-    assert not (music / "1999" / "C.mp3").exists()
+    assert not (music / "1999").exists()  # door de batch aangemaakte map is weer weg
     assert undo_journal.kind is Kind.UNDO
     assert undo_journal.undoes == target.batch_id
     # de teruggedraaide batch is niet nog eens terug te draaien, en een undo-batch ook niet

@@ -43,10 +43,20 @@ def run_undo(
     progress: Progress | None = None,
     cancelled: Cancelled | None = None,
 ) -> tuple[ExecResult, Journal]:
-    """Draai een batch terug. Werkt ook voor journalen van oudere appversies (via migraties)."""
+    """Draai een batch terug. Werkt ook voor journalen van oudere appversies (via migraties).
+
+    Mappen die de batch had aangemaakt en die na het terugzetten leeg zijn, worden opgeruimd;
+    mappen die de batch had opgeruimd, ontstaan vanzelf weer bij het terugzetten.
+    """
     journal = store.new(Kind.UNDO, target.root, app_version, undoes=target.batch_id)
     with store.writer(journal) as writer:
-        result = execute(undo_plans(target), writer, progress=progress, cancelled=cancelled)
+        result = execute(
+            undo_plans(target),
+            writer,
+            cleanup_root=Path(target.root) if target.root else None,
+            progress=progress,
+            cancelled=cancelled,
+        )
     if not result.cancelled:
         target.undone_by = journal.batch_id
         store.save(target)

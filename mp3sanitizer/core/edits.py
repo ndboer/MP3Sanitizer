@@ -93,6 +93,10 @@ class EditState:
     def clear(self) -> None:
         self._overrides.clear()
 
+    def discard(self, track_id: int) -> None:
+        """Vergeet de wijzigingen van één track (bijv. nadat ze zijn opgeslagen)."""
+        self._overrides.pop(track_id, None)
+
     def _set(self, track_id: int, field: Field, value: FieldValue) -> None:
         if value == self._tracks[track_id].original(field):
             fields = self._overrides.get(track_id)
