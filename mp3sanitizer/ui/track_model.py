@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPersistentModelIndex, Qt, Signal
-from PySide6.QtGui import QColor, QUndoStack
+from PySide6.QtGui import QColor, QFont, QIcon, QUndoStack
+from PySide6.QtWidgets import QApplication, QStyle
 
 from mp3sanitizer.core.edits import EditState
 from mp3sanitizer.core.models import (
@@ -38,6 +39,20 @@ WARNING_COLOR = QColor("#e08a00")
 # Halfdoorzichtig, zodat het in zowel het lichte als het donkere thema leesbaar blijft.
 CHANGED_BACKGROUND = QColor(255, 190, 0, 70)
 INVALID_BACKGROUND = QColor(220, 40, 40, 90)
+_BOLD = QFont()
+_BOLD.setBold(True)
+_ICONS: dict[bool, QIcon] = {}
+
+
+def _media_icon(playing: bool) -> QIcon:
+    """Stop-pictogram voor de track die speelt, anders Play (lazy: vereist een QApplication)."""
+    if playing not in _ICONS:
+        pixmap = (
+            QStyle.StandardPixmap.SP_MediaStop if playing else QStyle.StandardPixmap.SP_MediaPlay
+        )
+        _ICONS[playing] = QApplication.style().standardIcon(pixmap)
+    return _ICONS[playing]
+
 
 type AnyIndex = QModelIndex | QPersistentModelIndex
 type Issues = dict[Field, tuple[Issue, ...]]
@@ -56,6 +71,7 @@ class Col(IntEnum):
     TAG_ARTIST = 9
     TAG_TITLE = 10
     TAG_YEAR = 11
+    PLAY = 12  # actiekolom; wordt visueel vooraan gezet
 
     @property
     def key(self) -> str:
@@ -67,7 +83,7 @@ class Col(IntEnum):
 
     @property
     def optional(self) -> bool:
-        return self >= Col.DURATION
+        return self in _OPTIONAL
 
     @property
     def field(self) -> Field | None:
@@ -95,7 +111,9 @@ _HEADERS = {
     Col.TAG_ARTIST: "Tag-artiest",
     Col.TAG_TITLE: "Tag-titel",
     Col.TAG_YEAR: "Tag-jaar",
+    Col.PLAY: "",
 }
+_OPTIONAL = {Col.DURATION, Col.BITRATE, Col.SIZE, Col.TAG_ARTIST, Col.TAG_TITLE, Col.TAG_YEAR}
 
 _EDITABLE = {Col.ARTIST: Field.ARTIST, Col.TITLE: Field.TITLE, Col.YEAR: Field.YEAR}
 FIELD_COLUMN = {field: col for col, field in _EDITABLE.items()}
@@ -175,6 +193,7 @@ class TrackTableModel(QAbstractTableModel):
         # Verwachte relatieve map voor een jaar (None = niet verplaatsen); zie set_folder_rule.
         self._folder_rule: Callable[[int | None], str | None] | None = None
         self.duplicate_flags: set[int] = set()  # track-ids, gemarkeerd bij een botsing
+        self._playing: int | None = None  # track-id die nu speelt
         # _order[rij] = track-id; _rows[track-id] = rij
         self._order: list[int] = []
         self._rows: list[int] = []
@@ -338,6 +357,18 @@ class TrackTableModel(QAbstractTableModel):
         self._emit_rows_changed(touched)
         self.editsApplied.emit()
 
+    @property
+    def playing_track(self) -> int | None:
+        return self._playing
+
+    def set_playing(self, track_id: int | None) -> None:
+        """Markeer de track die speelt (Play-kolom en vetgedrukt)."""
+        if track_id == self._playing:
+            return
+        changed = {t for t in (self._playing, track_id) if t is not None}
+        self._playing = track_id
+        self._emit_rows_changed(t for t in changed if t < len(self._tracks))
+
     def flag_duplicates(self, track_ids: Iterable[int]) -> None:
         ids = set(track_ids) - self.duplicate_flags
         if ids:
@@ -482,6 +513,8 @@ class TrackTableModel(QAbstractTableModel):
                 return lambda i: natural_key(sort_key(tag_text(i, "tag_artist"), self._articles))
             case Col.TAG_TITLE:
                 return lambda i: natural_key(fold(tag_text(i, "tag_title")))
+            case Col.PLAY:
+                return lambda i: (i != self._playing, artist[i], title[i])
 
     # --- QAbstractTableModel -------------------------------------------------------------
     def rowCount(self, parent: AnyIndex = QModelIndex()) -> int:  # noqa: B008
@@ -523,6 +556,12 @@ class TrackTableModel(QAbstractTableModel):
             return track
         if role == Qt.ItemDataRole.TextAlignmentRole and col in _RIGHT_ALIGNED:
             return int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        if role == Qt.ItemDataRole.TextAlignmentRole and col == Col.PLAY:
+            return int(Qt.AlignmentFlag.AlignCenter)
+        if role == Qt.ItemDataRole.DecorationRole and col == Col.PLAY:
+            return _media_icon(tid == self._playing)
+        if role == Qt.ItemDataRole.FontRole and tid == self._playing:
+            return _BOLD
         if role == Qt.ItemDataRole.BackgroundRole:
             return self._background(tid, col)
         if role == Qt.ItemDataRole.ForegroundRole:
@@ -590,6 +629,8 @@ class TrackTableModel(QAbstractTableModel):
                 return (info.tag_title or "") if info else ""
             case Col.TAG_YEAR:
                 return str(info.tag_year) if info and info.tag_year else ""
+            case Col.PLAY:
+                return ""  # pictogram via DecorationRole
         return ""
 
     def _background(self, tid: int, col: Col) -> QColor | None:
@@ -655,4 +696,6 @@ class TrackTableModel(QAbstractTableModel):
             return "\n".join(lines) or None
         if col in (Col.FOLDER, Col.FILENAME):
             return str(track.path)
+        if col == Col.PLAY:
+            return "Stoppen (spatie)" if tid == self._playing else "Afspelen (spatie)"
         return None

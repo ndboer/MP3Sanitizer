@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableView,
     QToolBar,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -40,6 +41,7 @@ from mp3sanitizer.core.planner import DecadeStyle, FolderTemplate, PlanInput, fo
 from mp3sanitizer.core.settings import SettingsStore
 from mp3sanitizer.ui.bulk_edit_dialog import BulkEditDialog
 from mp3sanitizer.ui.delegates import TrackEditDelegate
+from mp3sanitizer.ui.player import SEEK_STEP_MS, MiniPlayer, Player, next_in_selection
 from mp3sanitizer.ui.proxy_model import QuickFilter, TrackFilterProxy
 from mp3sanitizer.ui.save_dialog import SavePreviewDialog
 from mp3sanitizer.ui.track_model import FIELD_COLUMN, Col, TrackTableModel
@@ -69,6 +71,7 @@ _DEFAULT_WIDTHS = {
     Col.TAG_ARTIST: 180,
     Col.TAG_TITLE: 220,
     Col.TAG_YEAR: 65,
+    Col.PLAY: 30,
 }
 
 
@@ -101,7 +104,15 @@ class MainWindow(QMainWindow):
 
         self.table = QTableView(self)
         self._setup_table()
-        self.setCentralWidget(self.table)
+        self.player = Player(self)
+        self.mini_player = MiniPlayer(self.player, self)
+        central = QWidget(self)
+        central_layout = QVBoxLayout(central)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.setSpacing(0)
+        central_layout.addWidget(self.table, 1)
+        central_layout.addWidget(self.mini_player)
+        self.setCentralWidget(central)
 
         self._stats_timer = QTimer(self, singleShot=True, interval=100)
         self._stats_timer.timeout.connect(self._update_stats)
@@ -158,6 +169,7 @@ class MainWindow(QMainWindow):
         for col, width in _DEFAULT_WIDTHS.items():
             t.setColumnWidth(col, width)
         t.sortByColumn(Col.ARTIST, Qt.SortOrder.AscendingOrder)
+        t.clicked.connect(self._on_table_clicked)
 
     def _build_actions(self) -> None:
         self.act_open = QAction("Map &openen…", self, shortcut=QKeySequence.StandardKey.Open)
@@ -194,6 +206,20 @@ class MainWindow(QMainWindow):
         self.act_save.triggered.connect(self.save_changes)
         self.act_undo_batch = QAction("Laatste batch &terugdraaien…", self)
         self.act_undo_batch.triggered.connect(self.undo_last_batch)
+        self.act_play = QAction("&Afspelen / stoppen", self)
+        self.act_play.setShortcut(QKeySequence("Space"))
+        # De spatiebalk zelf loopt via eventFilter; de sneltoets hier is alleen ter info
+        # in het menu en werkt nergens anders.
+        self.act_play.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
+        self.act_play.triggered.connect(lambda: self.toggle_play())
+        self.act_stop = QAction("S&toppen", self, shortcut=QKeySequence("Ctrl+."))
+        self.act_stop.triggered.connect(self.stop_playback)
+        self.act_seek_back = QAction("5 s &terug", self, shortcut=QKeySequence("Alt+Left"))
+        self.act_seek_back.triggered.connect(lambda: self.player.seek_relative(-SEEK_STEP_MS))
+        self.act_seek_fwd = QAction("5 s &vooruit", self, shortcut=QKeySequence("Alt+Right"))
+        self.act_seek_fwd.triggered.connect(lambda: self.player.seek_relative(SEEK_STEP_MS))
+        for act in (self.act_stop, self.act_seek_back, self.act_seek_fwd):
+            self.addAction(act)
         for act in (self.act_edit, self.act_bulk, self.act_swap, self.act_revert):
             # Alleen actief als de tabel (of een editor daarin) de focus heeft, zodat
             # bijv. Ctrl+W niet vanuit het zoekveld een wissel uitvoert.
@@ -265,6 +291,12 @@ class MainWindow(QMainWindow):
         m_edit.addSeparator()
         m_edit.addAction(self.act_revert_all)
 
+        m_play = mb.addMenu("&Afspelen")
+        m_play.addAction(self.act_play)
+        m_play.addAction(self.act_stop)
+        m_play.addAction(self.act_seek_back)
+        m_play.addAction(self.act_seek_fwd)
+
         m_view = mb.addMenu("Beel&d")
         m_view.addAction(self.act_find)
         m_filter = m_view.addMenu("&Filter")
@@ -304,6 +336,10 @@ class MainWindow(QMainWindow):
         self.table.selectionModel().selectionChanged.connect(self._schedule_stats)
         self.model.editsApplied.connect(self._refilter_timer.start)
         self.model.editRejected.connect(lambda msg: self._flash(msg, 8000))
+        self._setup_player()
+        # Spatie = afspelen; via een eventfilter omdat de tabel spatie anders zelf claimt.
+        # Pas hier installeren: de filter gebruikt ook het zoekveld.
+        self.table.installEventFilter(self)
 
     # --- weergave-instellingen -----------------------------------------------------------
     def _restore_view_state(self) -> None:
@@ -324,6 +360,10 @@ class MainWindow(QMainWindow):
                 self.table.setColumnHidden(col, col.key not in visible)
             else:
                 self.table.setColumnHidden(col, False)
+        hh = self.table.horizontalHeader()
+        hh.setSectionResizeMode(Col.PLAY, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(Col.PLAY, _DEFAULT_WIDTHS[Col.PLAY])
+        hh.moveSection(hh.visualIndex(Col.PLAY), 0)
 
     def _save_view_state(self) -> None:
         s = self._settings
@@ -332,6 +372,8 @@ class MainWindow(QMainWindow):
             "ascii"
         )
         s.visible_columns = [c.key for c in Col if not self.table.isColumnHidden(c)]
+        s.volume = self.mini_player.volume_slider.value()
+        s.autoplay_next = self.mini_player.autoplay.isChecked()
 
     def _set_column_visible(self, col: Col, visible: bool) -> None:
         self.table.setColumnHidden(col, not visible)
@@ -374,6 +416,16 @@ class MainWindow(QMainWindow):
                 self.search_edit.clear()
                 self.table.setFocus(Qt.FocusReason.ShortcutFocusReason)
                 return True
+        if (
+            watched is self.table
+            and event.type() == QEvent.Type.KeyPress
+            and isinstance(event, QKeyEvent)
+            and event.key() == Qt.Key.Key_Space
+            and not event.modifiers()
+            and self.table.state() != QAbstractItemView.State.EditingState
+        ):
+            self.toggle_play()
+            return True
         return super().eventFilter(watched, event)
 
     # --- statusbalk ----------------------------------------------------------------------
@@ -408,11 +460,72 @@ class MainWindow(QMainWindow):
         self.act_cancel.setEnabled(busy)
 
     # --- bewerken ------------------------------------------------------------------------
+    # --- afspelen ------------------------------------------------------------------------
+    def _setup_player(self) -> None:
+        self.player.trackChanged.connect(
+            lambda tid: self.model.set_playing(tid if isinstance(tid, int) else None)
+        )
+        self.player.finished.connect(self._on_track_finished)
+        self.player.error.connect(lambda msg: self._flash(f"Kan niet afspelen: {msg}", 8000))
+        self.mini_player.volume_slider.setValue(self._settings.volume)
+        self.player.set_volume(self._settings.volume)
+        self.mini_player.autoplay.setChecked(self._settings.autoplay_next)
+
+    def selected_ids_in_view_order(self) -> list[int]:
+        rows = sorted(i.row() for i in self.table.selectionModel().selectedRows())
+        return [
+            self.model.track_id(self.proxy.mapToSource(self.proxy.index(r, 0)).row()) for r in rows
+        ]
+
+    def play_track(self, track_id: int) -> None:
+        track = self.model.tracks[track_id]
+        e = self.model.edits
+        artist, title = e.artist(track_id), e.title(track_id)
+        label = f"{artist} - {title}" if artist else track.filename
+        self.player.play(track_id, track.path, label)
+
+    def toggle_play(self, track_id: int | None = None) -> None:
+        """Speel de huidige rij af, of stop als die al speelt (spatiebalk)."""
+        if track_id is None:
+            index = self.table.currentIndex()
+            if not index.isValid():
+                ids = self.selected_ids_in_view_order()
+                if not ids:
+                    return
+                track_id = ids[0]
+            else:
+                track_id = self.model.track_id(self.proxy.mapToSource(index).row())
+        if self.player.current_track == track_id:
+            self.player.stop()
+        else:
+            self.play_track(track_id)
+
+    def _on_table_clicked(self, index) -> None:
+        if index.isValid() and index.column() == Col.PLAY:
+            self.toggle_play(self.model.track_id(self.proxy.mapToSource(index).row()))
+
+    @Slot(int)
+    def _on_track_finished(self, track_id: int) -> None:
+        if not self.mini_player.autoplay.isChecked():
+            return
+        following = next_in_selection(self.selected_ids_in_view_order(), track_id)
+        if following is not None:
+            self.play_track(following)
+            row = self.proxy.mapFromSource(self.model.index(self.model.row_of(following), 0))
+            if row.isValid():
+                self.table.scrollTo(row)
+
+    def stop_playback(self) -> None:
+        """Vóór bestandsoperaties: Windows kan een geopend bestand niet hernoemen."""
+        self.player.stop()
+
     def _add_row_actions(self, menu: QMenu) -> None:
         menu.addAction(self.act_edit)
         menu.addAction(self.act_bulk)
         menu.addAction(self.act_swap)
         menu.addAction(self.act_revert)
+        menu.addSeparator()
+        menu.addAction(self.act_play)
 
     def _show_row_menu(self, pos) -> None:
         if not self.table.indexAt(pos).isValid():
@@ -507,6 +620,7 @@ class MainWindow(QMainWindow):
 
     def start_scan(self, root: Path) -> None:
         self.cancel_tasks()
+        self.stop_playback()
         self._root = root
         self._settings.last_root = str(root)
         self._update_title()
@@ -645,6 +759,7 @@ class MainWindow(QMainWindow):
         assert self._root is not None
         if not plans:
             return
+        self.stop_playback()
         worker = SaveWorker(plans, self.journals, self._root, __version__, cleanup_empty_dirs)
         self._start_batch(worker, f"Opslaan ({len(plans)})…", len(plans))
 
@@ -669,6 +784,7 @@ class MainWindow(QMainWindow):
         self.start_undo(target)
 
     def start_undo(self, target: Journal) -> None:
+        self.stop_playback()
         worker = UndoWorker(target, self.journals, __version__)
         self._start_batch(worker, "Terugdraaien…", target.ok_count)
 
