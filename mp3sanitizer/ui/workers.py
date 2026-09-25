@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, Signal
@@ -198,3 +198,22 @@ class DeleteWorker(Worker):
             **kwargs,
         )
         self.signals.batch.emit(result)
+
+
+class FunctionWorker(Worker):
+    """Voert een willekeurige functie uit op de achtergrond. ``batch`` levert het resultaat.
+
+    De functie krijgt ``cancelled`` (een callable) als keyword mee als ``pass_cancel`` aan staat.
+    """
+
+    def __init__(self, fn: Callable[..., object], *args: object, pass_cancel: bool = False) -> None:
+        super().__init__()
+        self.fn = fn
+        self.args = args
+        self.pass_cancel = pass_cancel
+
+    def work(self) -> None:
+        kwargs = {"cancelled": lambda: self.cancelled} if self.pass_cancel else {}
+        result = self.fn(*self.args, **kwargs)
+        if not self.cancelled:
+            self.signals.batch.emit(result)
