@@ -42,6 +42,8 @@ De versie komt uit de Git-tag (hatch-vcs). Na het wisselen van tag of branch:
 | Artiestenoverzicht en voorstellen       | Ctrl+Shift+A       |
 | Duplicaten zoeken                       | Ctrl+D             |
 | Batch-correcties (opschoonregels)       | Ctrl+K             |
+| Openen in Verkenner                     | Ctrl+E             |
+| Sessie opslaan / openen                 | Ctrl+Shift+S / O   |
 | Lopende taak annuleren                  | Esc                |
 
 Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zonder jaar,
@@ -145,6 +147,17 @@ en regelsets zijn te importeren/exporteren als JSON. Alle regelinstellingen en p
   Enter kiest dan Annuleren.
 - Verwijderingen staan in het journaal, maar zijn niet via "Laatste batch terugdraaien" te
   herstellen: haal bestanden terug uit de Prullenbak van Windows.
+
+### Sessies, export en overig
+
+- **Bestand → Sessie opslaan…** bewaart de niet-opgeslagen wijzigingen als projectbestand
+  (`*.mp3s.json`); **Sessie openen…** leest de bijbehorende map opnieuw in en zet de wijzigingen
+  terug (één undo-stap). Bestanden die intussen verdwenen zijn, worden gemeld.
+- Bij afsluiten, herladen of een andere map openen met openstaande wijzigingen kun je kiezen:
+  **Opslaan** (als sessie), **Verwerpen** of **Annuleren**.
+- **Bestand → Exporteren naar CSV…** exporteert het (gefilterde) overzicht met de zichtbare
+  kolommen, als UTF-8 met BOM en puntkomma's, zodat Nederlandse Excel het direct goed opent.
+- Rechtsklik → **Openen in Verkenner** (Ctrl+E) toont het bestand geselecteerd in Verkenner.
 
 ### Opslaan
 

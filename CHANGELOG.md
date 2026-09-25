@@ -7,6 +7,15 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-25
+
+### Added
+- Sessie opslaan/openen als projectbestand (`*.mp3s.json`, met `schema_version`); bij het
+  openen wordt de map opnieuw ingelezen en worden de wijzigingen als één undo-stap teruggezet.
+- Keuze "Opslaan" (als sessie) in de waarschuwing bij afsluiten/herladen met open wijzigingen.
+- Export van het (gefilterde) overzicht naar CSV voor Nederlandse Excel (UTF-8 met BOM, `;`).
+- Contextmenu "Openen in Verkenner" (`explorer /select,`), Ctrl+E.
+
 ## [0.8.0] - 2026-09-25
 
 ### Added
