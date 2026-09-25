@@ -7,6 +7,25 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-25
+
+### Added
+- Inline bewerken van Artiest, Titel en Jaar (F2 of dubbelklik).
+- Bulk bewerken: één veld voor alle geselecteerde tracks invullen (Ctrl+B).
+- Wissel artiest ⇄ titel (Ctrl+W) en terugdraaien per rij (Ctrl+R), ook via het contextmenu.
+- Undo/redo (Ctrl+Z / Ctrl+Y) voor alle bewerkingen; een bulk-actie is één undo-stap.
+- Validatie: jaar numeriek en binnen bereik; ongeldige Windows-tekens en lege velden worden
+  gemarkeerd; gereserveerde namen (CON, NUL, ...) worden op de volledige bestandsnaam gecontroleerd.
+- Gewijzigde cellen zijn gemarkeerd tot ze zijn opgeslagen; tooltip met de originele waarde en
+  de nieuwe bestandsnaam.
+- Snelfilters "Gewijzigd (niet opgeslagen)" en "Ongeldige namen"; teller "Gewijzigd" in de
+  statusbalk.
+- Bevestiging bij openen van een andere map, herladen of afsluiten met openstaande wijzigingen.
+
+### Changed
+- Titels, bestandsnamen en artiesten sorteren natuurlijk ("Song 9" vóór "Song 10").
+- Filters en zoeken gebruiken de bewerkte waarden.
+
 ## [0.1.0] - 2026-09-25
 
 ### Added
