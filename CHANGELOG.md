@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-25
+
 ### Added
 - Over-dialoog (Help) met versie, commit-hash, builddatum en de versies van Python, PySide6 en
   mutagen, plus "Kopieer info" voor bugmeldingen.
