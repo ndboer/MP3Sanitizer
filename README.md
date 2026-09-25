@@ -41,6 +41,7 @@ De versie komt uit de Git-tag (hatch-vcs). Na het wisselen van tag of branch:
 | Artiesten zoeken en corrigeren (fuzzy)  | Ctrl+Shift+F       |
 | Artiestenoverzicht en voorstellen       | Ctrl+Shift+A       |
 | Duplicaten zoeken                       | Ctrl+D             |
+| Batch-correcties (opschoonregels)       | Ctrl+K             |
 | Lopende taak annuleren                  | Esc                |
 
 Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zonder jaar,
@@ -89,6 +90,30 @@ Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zo
 De score is het gemiddelde van rapidfuzz `token_set_ratio` en `ratio` op de genormaliseerde naam
 (zo is "Beatles Tribute Band" niet hetzelfde als "Beatles", maar "Beatels" wel); bij zoeken telt
 ook een deelmatch mee ("beat" vindt "The Beatles").
+
+### Batch-correcties (opschoonregels)
+
+**Bewerken → Batch-correcties…** (Ctrl+K): vink regels aan (een combinatie is op te slaan als
+*opschoonprofiel*), kies de scope (hele collectie, huidige filter of geselecteerde rijen) en
+bekijk de **preview**: per veld oud → nieuw met de verschillen gemarkeerd; alleen aangevinkte
+regels worden toegepast, als één undo-stap. Opslaan naar schijf gaat daarna via Ctrl+S.
+
+| Regel | Wat |
+|---|---|
+| Spaties opschonen | trim, dubbele spaties, spaties rond ` - ` en haakjes |
+| Title Case | hoofdletters per woord; kleine woorden (of, the, a, in, van, de, het, …) klein behalve aan het begin; afkortingen, Romeinse cijfers en woorden als McCartney blijven intact |
+| Eigen vervangingsregels | zoek → vervang per veld, heel woord, hoofdlettergevoelig, regex; standaardregels: `vs/Vs./versus → vs.`, `&amp; → &`, dubbele spaties, spatie vóór `)`, `´` en `` ` `` → `'` |
+| Lidwoord | "Beatles, The" ↔ "The Beatles" consequent (keuze instelbaar) |
+| Featuring | `feat`, `feat.`, `featuring`, `ft`, `ft.`, `f.` → `ft.` (of `feat.`), ook in haakjes; optioneel verplaatsen naar artiest of titel |
+| Afkortingen | `U.s.a` → `U.S.A.`, `u.k.` → `U.K.` (nooit dubbele punt) + vaste lijst (DJ, MC, UB40, ABBA, AC/DC, …) + uitzonderingen |
+| Romeinse cijfers | alleen geldige Romeinse getallen; standaard t/m XXXIX, na Part/Pt./Vol./Volume/Chapter/Deel/Act of aan het eind van de titel; uitzonderingen (Mix, Mi, Di, …) |
+| Jaar uit tag | vult het jaar in uit de tag als de bestandsnaam geen jaar heeft |
+
+De regels worden altijd in deze volgorde toegepast. Instellingen per regel via **Instellingen…**
+(of dubbelklik). **Bewerken → Vervangingsregels…** opent de regeleditor: volgorde slepen of met
+Omhoog/Omlaag, een testveld dat de regel live uitprobeert, ongeldige regex wordt direct gemeld,
+en regelsets zijn te importeren/exporteren als JSON. Alle regelinstellingen en profielen staan in
+`%APPDATA%\Mp3Sanitizer\rules.json`.
 
 ### Duplicaten
 
