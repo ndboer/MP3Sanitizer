@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# PyInstaller: negeer gegenereerde specs, behalve het eigen spec-bestand
+*.spec
+!mp3sanitizer.spec
+
+# Gegenereerd door hatch-vcs
+mp3sanitizer/_version.py
+
+# Gebruikersconfig, logs en testaudio horen niet in de repo
+*.log
+*.mp3
+*.flac
+*.m4a
+*.wav
+*.ogg
