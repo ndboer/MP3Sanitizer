@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
-from PySide6.QtCore import QObject, Qt, QThreadPool, QTimer, Slot
+from PySide6.QtCore import Qt, QThreadPool, QTimer, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -36,7 +36,7 @@ from mp3sanitizer.core.models import Field
 from mp3sanitizer.core.musicbrainz import ArtistCandidate, MusicBrainzClient, MusicBrainzError
 from mp3sanitizer.core.normalize import DEFAULT_ARTICLES, natural_key, sort_key
 from mp3sanitizer.ui.track_model import ERROR_COLOR, TrackTableModel
-from mp3sanitizer.ui.workers import FunctionWorker, Worker
+from mp3sanitizer.ui.workers import FunctionWorker, JobRunner
 
 SPELLING_ROLE = Qt.ItemDataRole.UserRole + 20
 TRACK_ID_ROLE = Qt.ItemDataRole.UserRole + 21
@@ -56,49 +56,6 @@ class _ArtistItem(QTreeWidgetItem):
         return super().__lt__(other)
 
 
-class _Jobs(QObject):
-    """Houdt achtergrondtaken vast en negeert resultaten van verouderde aanvragen."""
-
-    def __init__(self, pool: QThreadPool, parent: QObject) -> None:
-        super().__init__(parent)
-        self._pool = pool
-        self._current: dict[str, Worker] = {}
-        # signals-object -> (naam, worker, callback); ook bewaard zodat Python ze vasthoudt.
-        self._running: dict[QObject, tuple[str, Worker, Callable[[object], None]]] = {}
-
-    def run(self, name: str, worker: FunctionWorker, on_result: Callable[[object], None]) -> None:
-        old = self._current.get(name)
-        if old is not None:
-            old.cancel()
-        self._current[name] = worker
-        self._running[worker.signals] = (name, worker, on_result)
-        # Koppelen aan slots van dit QObject: Qt verbreekt de verbinding als het dialoog
-        # (en daarmee dit object) wordt opgeruimd terwijl de worker nog loopt.
-        worker.signals.batch.connect(self._on_batch)
-        worker.signals.finished.connect(self._on_finished)
-        self._pool.start(worker)
-
-    @Slot(object)
-    def _on_batch(self, result: object) -> None:
-        entry = self._running.get(self.sender())
-        if entry is not None:
-            name, worker, callback = entry
-            if self._current.get(name) is worker:
-                callback(result)
-
-    @Slot(bool)
-    def _on_finished(self, _cancelled: bool) -> None:
-        self._running.pop(self.sender(), None)
-
-    def busy(self, name: str) -> bool:
-        worker = self._current.get(name)
-        return worker is not None and any(w is worker for _, w, _ in self._running.values())
-
-    def cancel_all(self) -> None:
-        for _, worker, _ in self._running.values():
-            worker.cancel()
-
-
 class MusicBrainzDialog(QDialog):
     """Zoekt een artiest op MusicBrainz en laat een kandidaat kiezen (officiële naam)."""
 
@@ -109,7 +66,7 @@ class MusicBrainzDialog(QDialog):
         self.setWindowTitle("Opzoeken op MusicBrainz")
         self.resize(820, 380)
         self._client = client
-        self._jobs = _Jobs(pool, self)
+        self._jobs = JobRunner(pool, self)
         self.chosen: ArtistCandidate | None = None
 
         self.query_edit = QLineEdit(name, self)
@@ -226,7 +183,7 @@ class ArtistDialog(QDialog):
         self._pool = pool
         self._mb_factory = mb_client_factory
         self._articles = tuple(articles)
-        self._jobs = _Jobs(pool, self)
+        self._jobs = JobRunner(pool, self)
         self._index: dict[str, list[int]] = {}
 
         self.tabs = QTabWidget(self)

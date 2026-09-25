@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRunnable, Signal
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
 
 from mp3sanitizer.core.batch import run_save, run_undo
 from mp3sanitizer.core.deleter import DeleteItem, Trash, delete_files
@@ -217,3 +217,46 @@ class FunctionWorker(Worker):
         result = self.fn(*self.args, **kwargs)
         if not self.cancelled:
             self.signals.batch.emit(result)
+
+
+class JobRunner(QObject):
+    """Houdt achtergrondtaken vast en negeert resultaten van verouderde aanvragen."""
+
+    def __init__(self, pool: QThreadPool, parent: QObject) -> None:
+        super().__init__(parent)
+        self._pool = pool
+        self._current: dict[str, Worker] = {}
+        # signals-object -> (naam, worker, callback); ook bewaard zodat Python ze vasthoudt.
+        self._running: dict[QObject, tuple[str, Worker, Callable[[object], None]]] = {}
+
+    def run(self, name: str, worker: FunctionWorker, on_result: Callable[[object], None]) -> None:
+        old = self._current.get(name)
+        if old is not None:
+            old.cancel()
+        self._current[name] = worker
+        self._running[worker.signals] = (name, worker, on_result)
+        # Koppelen aan slots van dit QObject: Qt verbreekt de verbinding als het dialoog
+        # (en daarmee dit object) wordt opgeruimd terwijl de worker nog loopt.
+        worker.signals.batch.connect(self._on_batch)
+        worker.signals.finished.connect(self._on_finished)
+        self._pool.start(worker)
+
+    @Slot(object)
+    def _on_batch(self, result: object) -> None:
+        entry = self._running.get(self.sender())
+        if entry is not None:
+            name, worker, callback = entry
+            if self._current.get(name) is worker:
+                callback(result)
+
+    @Slot(bool)
+    def _on_finished(self, _cancelled: bool) -> None:
+        self._running.pop(self.sender(), None)
+
+    def busy(self, name: str) -> bool:
+        worker = self._current.get(name)
+        return worker is not None and any(w is worker for _, w, _ in self._running.values())
+
+    def cancel_all(self) -> None:
+        for _, worker, _ in self._running.values():
+            worker.cancel()

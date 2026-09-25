@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 
 from mp3sanitizer import __version__
 from mp3sanitizer.core.deleter import DeleteItem, DeleteResult, Trash
+from mp3sanitizer.core.duplicates import DupItem, DupOptions, find_duplicates
 from mp3sanitizer.core.executor import ExecResult
 from mp3sanitizer.core.journal import Journal, JournalStore
 from mp3sanitizer.core.models import Field, ParseStatus, RenamePlan
@@ -45,12 +46,15 @@ from mp3sanitizer.ui.artist_search import ArtistDialog, MusicBrainzDialog
 from mp3sanitizer.ui.bulk_edit_dialog import BulkEditDialog
 from mp3sanitizer.ui.delegates import TrackEditDelegate
 from mp3sanitizer.ui.delete_dialog import DeleteDialog
+from mp3sanitizer.ui.duplicates_view import DuplicatesDialog
 from mp3sanitizer.ui.player import SEEK_STEP_MS, MiniPlayer, Player, next_in_selection
 from mp3sanitizer.ui.proxy_model import QuickFilter, TrackFilterProxy
 from mp3sanitizer.ui.save_dialog import SavePreviewDialog, relative
 from mp3sanitizer.ui.track_model import FIELD_COLUMN, Col, TrackTableModel
 from mp3sanitizer.ui.workers import (
     DeleteWorker,
+    FunctionWorker,
+    JobRunner,
     SaveWorker,
     ScanWorker,
     TagWorker,
@@ -98,6 +102,7 @@ class MainWindow(QMainWindow):
         self._mb_client: MusicBrainzClient | None = None
         # Tests vervangen dit door een client zonder netwerk.
         self.mb_client_factory = self.musicbrainz_client
+        self._jobs = JobRunner(self._pool, self)
         self.last_report = ""
         self._reload_after_batch = False
         self._root: Path | None = None
@@ -222,6 +227,9 @@ class MainWindow(QMainWindow):
         self.act_artist_overview = QAction("Artiesten&overzicht en voorstellen…", self)
         self.act_artist_overview.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.act_artist_overview.triggered.connect(lambda: self.open_artist_dialog(overview=True))
+        self.act_duplicates = QAction("&Duplicaten zoeken…", self)
+        self.act_duplicates.setShortcut(QKeySequence("Ctrl+D"))
+        self.act_duplicates.triggered.connect(self.open_duplicates)
         self.act_mb = QAction("Opzoeken op &MusicBrainz…", self)
         self.act_mb.triggered.connect(self.lookup_musicbrainz)
         self.act_delete = QAction("&Verwijderen…", self, shortcut=QKeySequence.StandardKey.Delete)
@@ -315,6 +323,7 @@ class MainWindow(QMainWindow):
         m_edit.addSeparator()
         m_edit.addAction(self.act_artists)
         m_edit.addAction(self.act_artist_overview)
+        m_edit.addAction(self.act_duplicates)
         m_edit.addSeparator()
         m_edit.addAction(self.act_revert_all)
 
@@ -416,6 +425,8 @@ class MainWindow(QMainWindow):
 
     # --- filters -------------------------------------------------------------------------
     def set_quick_filter(self, value: QuickFilter) -> None:
+        if value is QuickFilter.DUPLICATES:
+            self.refresh_duplicate_filter()  # altijd met de actuele waarden
         self.proxy.set_quick_filter(value)
         self.filter_actions[value].setChecked(True)
         index = self.filter_combo.findData(value.value)
@@ -526,6 +537,46 @@ class MainWindow(QMainWindow):
         chosen = dialog.chosen if dialog.exec() else None
         if chosen is not None and self.model.set_field(ids, Field.ARTIST, chosen.name):
             self._flash(self.undo_stack.undoText())
+
+    # --- duplicaten ----------------------------------------------------------------------
+    def duplicate_options(self) -> DupOptions:
+        s = self._settings
+        return DupOptions(
+            fuzzy=s.dup_fuzzy,
+            threshold=s.dup_threshold,
+            ignore_year=s.dup_ignore_year,
+            ignore_versions=s.dup_ignore_versions,
+            use_duration=s.dup_use_duration,
+            articles=tuple(s.articles),
+        )
+
+    def refresh_duplicate_filter(self) -> None:
+        """Detectie op de achtergrond voor het snelfilter 'Duplicaten'."""
+        worker = FunctionWorker(
+            find_duplicates, self.model.dup_items(), self.duplicate_options(), pass_cancel=True
+        )
+        self._jobs.run("duplicates", worker, self._on_duplicates_found)
+
+    def _on_duplicates_found(self, result: object) -> None:
+        groups: list[list[DupItem]] = result  # type: ignore[assignment]
+        self.model.set_duplicates(i.track_id for g in groups for i in g)
+        self._refilter()
+
+    def open_duplicates(self) -> None:
+        if not self._ensure_idle():
+            return
+        dialog = DuplicatesDialog(
+            self.model, self._settings, self._pool, self._root, self.play_track, self
+        )
+        accepted = dialog.exec()
+        self._refilter()
+        if not accepted or not dialog.to_delete or self._root is None:
+            return
+        ids = dialog.to_delete
+        root = self._root
+        confirm = DeleteDialog([relative(self.model.tracks[i].path, root) for i in ids], self)
+        if confirm.exec():
+            self.start_delete(ids, confirm.is_permanent)
 
     # --- verwijderen ---------------------------------------------------------------------
     def delete_selected(self) -> None:
