@@ -47,6 +47,12 @@ class Settings:
     # Fuzzy zoeken / MusicBrainz
     fuzzy_threshold: int = 85
     musicbrainz_contact: str = "https://github.com/ndboer/MP3Sanitizer"
+    # Duplicaten
+    dup_fuzzy: bool = False
+    dup_threshold: int = 90
+    dup_ignore_year: bool = True
+    dup_ignore_versions: bool = False
+    dup_use_duration: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Settings:

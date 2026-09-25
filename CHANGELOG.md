@@ -7,6 +7,17 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-25
+
+### Added
+- Duplicaatdetectie op genormaliseerde artiest + titel: strikt of fuzzy (drempel), jaar
+  negeren, versie-aanduidingen negeren, optioneel duur ±2 s.
+- Duplicatenvenster (Ctrl+D) gegroepeerd per duplicaatgroep met bitrate, duur, grootte, jaar
+  en map; "Beste automatisch behouden" (hoogste bitrate, langste duur, kortste pad) met
+  per groep aanpasbare selectie; afspelen vanuit het venster.
+- Verwijderen van de aangevinkte duplicaten via de gewone bevestiging (Prullenbak).
+- Snelfilter "Duplicaten" (Ctrl+8).
+
 ## [0.6.0] - 2026-09-25
 
 ### Added

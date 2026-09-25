@@ -16,6 +16,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPersistentModelInd
 from PySide6.QtGui import QColor, QFont, QIcon, QUndoStack
 from PySide6.QtWidgets import QApplication, QStyle
 
+from mp3sanitizer.core.duplicates import DupItem
 from mp3sanitizer.core.edits import EditState
 from mp3sanitizer.core.models import (
     AudioInfo,
@@ -196,6 +197,8 @@ class TrackTableModel(QAbstractTableModel):
         self._playing: int | None = None  # track-id die nu speelt
         # Verwijderde tracks blijven in de lijst (ids blijven geldig) maar zijn verborgen.
         self._deleted: set[int] = set()
+        # Resultaat van de laatste duplicaatdetectie (voor het snelfilter 'Duplicaten').
+        self._duplicates: set[int] = set()
         # _order[rij] = track-id; _rows[track-id] = rij
         self._order: list[int] = []
         self._rows: list[int] = []
@@ -235,6 +238,36 @@ class TrackTableModel(QAbstractTableModel):
     def search_key(self, row: int) -> str:
         """Gevouwen 'artiest\\0titel\\0bestandsnaam' voor het zoekfilter."""
         return self._search_keys[self._order[row]]
+
+    def is_duplicate(self, row: int) -> bool:
+        tid = self._order[row]
+        return tid in self._duplicates or tid in self.duplicate_flags
+
+    def set_duplicates(self, track_ids: Iterable[int]) -> None:
+        """Zet het detectieresultaat; de aanroeper ververst zelf het filter."""
+        self._duplicates = set(track_ids)
+
+    def dup_items(self) -> list[DupItem]:
+        """Invoer voor de duplicaatdetectie: effectieve waarden van alle tracks."""
+        e = self.edits
+        items = []
+        for t in self._tracks:
+            if t.id in self._deleted:
+                continue
+            info = t.info
+            items.append(
+                DupItem(
+                    t.id,
+                    e.artist(t.id),
+                    e.title(t.id),
+                    e.year(t.id),
+                    t.path,
+                    info.duration_s if info else None,
+                    info.bitrate_kbps if info else None,
+                    info.size_bytes if info else None,
+                )
+            )
+        return items
 
     def is_deleted(self, row: int) -> bool:
         return self._order[row] in self._deleted
@@ -297,6 +330,7 @@ class TrackTableModel(QAbstractTableModel):
         self.edits.clear()
         self.duplicate_flags.clear()
         self._deleted.clear()
+        self._duplicates.clear()
         self._playing = None
         self.endResetModel()
 

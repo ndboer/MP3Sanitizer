@@ -19,6 +19,7 @@ class QuickFilter(StrEnum):
     TAG_MISMATCH = "tag_mismatch"
     INVALID = "invalid"
     WRONG_FOLDER = "wrong_folder"
+    DUPLICATES = "duplicates"
 
     @property
     def label(self) -> str:
@@ -38,6 +39,7 @@ _LABELS = {
     QuickFilter.TAG_MISMATCH: "Tag-mismatch",
     QuickFilter.INVALID: "Ongeldige namen",
     QuickFilter.WRONG_FOLDER: "Verkeerde jaarmap",
+    QuickFilter.DUPLICATES: "Duplicaten",
 }
 
 
@@ -118,5 +120,8 @@ class TrackFilterProxy(QSortFilterProxyModel):
                     return False
             case QuickFilter.WRONG_FOLDER:
                 if not model.is_misplaced(source_row):
+                    return False
+            case QuickFilter.DUPLICATES:
+                if not model.is_duplicate(source_row):
                     return False
         return not self._text or self._text in model.search_key(source_row)
