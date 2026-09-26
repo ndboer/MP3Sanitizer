@@ -7,6 +7,12 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Fixed
+- Een volgnummer na het jaar (`Titel (1985)(2)` of `Titel (1985) (2)`) wordt genegeerd bij het
+  parsen: het jaar wordt herkend en het nummer komt niet meer in de titel. De Status-tooltip
+  meldt het volgnummer; bij opslaan verdwijnt het uit de naam. Namen die de app zelf met een
+  suffix " (2)" opsloeg, worden nu ook correct teruggelezen.
+
 ## [0.10.0] - 2026-09-25
 
 ### Added

@@ -81,3 +81,32 @@ def test_split_year_default_upper_bound():
 
 def test_clean_whitespace():
     assert clean_whitespace("  a \t b  ") == "a b"
+
+
+@pytest.mark.parametrize(
+    ("stem", "title", "year", "copy"),
+    [
+        ("Queen - Innuendo (1991)(2)", "Innuendo", 1991, 2),
+        ("Queen - Innuendo (1991) (3)", "Innuendo", 1991, 3),
+        ("Queen - Innuendo (1991)(12) ", "Innuendo", 1991, 12),
+        ("Queen - Innuendo (1991)", "Innuendo", 1991, None),
+        # zonder geldig jaar ervoor blijft een '(2)' onderdeel van de titel
+        ("Queen - Symphony (5)", "Symphony (5)", None, None),
+        ("Queen - Innuendo (1850)(2)", "Innuendo (1850)(2)", None, None),
+        ("Queen - Innuendo (1991)(2024)", "Innuendo (1991)", 2024, None),  # laatste jaar telt
+    ],
+)
+def test_copy_number_after_year_is_ignored(stem, title, year, copy):
+    parsed = parse_filename(stem, upper_year=2027)
+    assert (parsed.artist, parsed.title, parsed.year, parsed.copy_number) == (
+        "Queen",
+        title,
+        year,
+        copy,
+    )
+
+
+def test_copy_number_on_parse_error_name():
+    parsed = parse_filename("Innuendo (1991)(2)", upper_year=2027)
+    assert parsed.status is ParseStatus.ERROR
+    assert (parsed.title, parsed.year, parsed.copy_number) == ("Innuendo", 1991, 2)

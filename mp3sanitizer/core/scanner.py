@@ -68,4 +68,5 @@ def track_from_path(track_id: int, path: Path, root: Path) -> Track:
         artist=parsed.artist,
         title=parsed.title,
         year=parsed.year,
+        copy_number=parsed.copy_number,
     )

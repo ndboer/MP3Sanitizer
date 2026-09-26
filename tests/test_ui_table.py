@@ -131,3 +131,12 @@ def test_main_window_scans_folder(qapp, tmp_path):
     window.close()
     assert store.settings.last_root == str(music)
     assert (tmp_path / "config" / "settings.json").exists()
+
+
+def test_copy_number_shown_in_status_tooltip(qapp, tmp_path):
+    model = TrackTableModel()
+    model.append_tracks([track_from_path(0, tmp_path / "Queen - Innuendo (1991)(2).mp3", tmp_path)])
+    assert model.index(0, Col.YEAR).data() == "1991"
+    assert model.index(0, Col.TITLE).data() == "Innuendo"
+    tip = model.index(0, Col.STATUS).data(Qt.ItemDataRole.ToolTipRole)
+    assert "Volgnummer (2)" in tip

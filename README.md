@@ -59,6 +59,10 @@ Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zo
 
 - De bestandsnaam wordt gesplitst op de **eerste** ` - ` (ook en-/em-dash). Een jaar `(dddd)` aan
   het eind telt alleen als het tussen 1900 en volgend jaar ligt.
+- Een volgnummer direct na het jaar, zoals `Titel (1985)(2)` of `Titel (1985) (2)`, wordt
+  genegeerd: zo'n nummer wordt toegevoegd als er al een bestand met dezelfde naam bestond. De
+  Status-tooltip meldt het; bij opslaan verdwijnt het uit de naam (bestaat het origineel nog,
+  dan volgt de gewone botsingsafhandeling, en de duplicatenzoeker vindt beide).
 - Bestanden die niet volgens het patroon parsen krijgen de status **Parse-fout** en blijven
   zichtbaar.
 - Duur, bitrate, grootte en tags worden na het scannen op de achtergrond ingelezen. Wijken de tags

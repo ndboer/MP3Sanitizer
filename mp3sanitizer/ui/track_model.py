@@ -429,6 +429,7 @@ class TrackTableModel(QAbstractTableModel):
             parsed = parse_filename(new_path.stem)
             track.artist, track.title, track.year = parsed.artist, parsed.title, parsed.year
             track.parse_status = parsed.status
+            track.copy_number = parsed.copy_number
             self._folder_keys[tid] = fold(track.folder)
             touched.add(tid)
         for tid, tags in tagged.items():
@@ -760,6 +761,11 @@ class TrackTableModel(QAbstractTableModel):
             lines = []
             if e.is_changed(tid):
                 lines.append(f"Nieuwe naam: {self.target_filename(tid)}")
+            if track.copy_number is not None:
+                lines.append(
+                    f"Volgnummer ({track.copy_number}) na het jaar: waarschijnlijk een kopie; "
+                    "wordt genegeerd en verdwijnt bij opslaan."
+                )
             if tid in self.duplicate_flags:
                 lines.append("Gemarkeerd als duplicaat: de doelnaam bestaat al.")
             if self._misplaced[tid]:

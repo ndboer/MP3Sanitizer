@@ -114,3 +114,12 @@ def test_performance_10k_strict():
     t = time.perf_counter()
     find_duplicates(items)
     assert time.perf_counter() - t < 2
+
+
+def test_copy_number_files_are_duplicates(tmp_path):
+    from mp3sanitizer.core.scanner import track_from_path
+
+    names = ["Queen - Innuendo (1991).mp3", "Queen - Innuendo (1991)(2).mp3"]
+    tracks = [track_from_path(i, tmp_path / n, tmp_path) for i, n in enumerate(names)]
+    items = [DupItem(t.id, t.artist, t.title, t.year, t.path) for t in tracks]
+    assert ids(find_duplicates(items, DupOptions(ignore_year=False))) == [[0, 1]]
