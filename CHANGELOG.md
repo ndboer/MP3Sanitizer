@@ -7,6 +7,10 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Fixed
+- De Windows-build bevatte onnodig Pillow (±13 MB) uit de ontwikkelomgeving; die wordt nu
+  uitgesloten.
+
 ## [0.10.2] - 2026-09-26
 
 ### Added
