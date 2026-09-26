@@ -4,6 +4,7 @@
     uv run python scripts/release.py release 0.10.0 --push   # idem, daarna git push --follow-tags
     uv run python scripts/release.py release 0.10.0 --dry-run
     uv run python scripts/release.py build                   # alleen PyInstaller-build + zip
+    uv run python scripts/release.py manual                  # alleen de handleiding (PDF)
     uv run python scripts/release.py notes 0.10.0            # changelogsectie (voor de CI)
 
 Stappen van ``release``:
@@ -13,7 +14,8 @@ Stappen van ``release``:
    "Unreleased" erboven) en gecommit als ``chore(release): vX.Y.Z``;
 3. Git-tag ``vX.Y.Z``;
 4. PyInstaller-build (``mp3sanitizer.spec``), smoke-test van de exe en
-   ``dist/mp3sanitizer-X.Y.Z-win64.zip``.
+   ``dist/mp3sanitizer-X.Y.Z-win64.zip``, plus de handleiding
+   ``dist/Mp3Sanitizer-handleiding-X.Y.Z.pdf`` (screenshots van de echte app).
 """
 
 from __future__ import annotations
@@ -83,6 +85,10 @@ def promote_changelog(text: str, version: str, day: date) -> str:
 
 def zip_name(version: str) -> str:
     return f"mp3sanitizer-{version}-win64.zip"
+
+
+def manual_name(version: str) -> str:
+    return f"Mp3Sanitizer-handleiding-{version}.pdf"
 
 
 # --- stappen ---------------------------------------------------------------------------------
@@ -176,7 +182,38 @@ def build(expected_version: str | None = None, dry: bool = False) -> Path:
     archive.unlink(missing_ok=True)
     shutil.make_archive(str(archive.with_suffix("")), "zip", root_dir=DIST, base_dir=APP_DIR.name)
     print(f"   {archive.relative_to(ROOT)} ({archive.stat().st_size / 1e6:.0f} MB)")
+    build_manual(version)
     return archive
+
+
+def build_manual(version: str | None = None) -> Path:
+    """Screenshots van de echte app maken en de PDF-handleiding bouwen."""
+    print("   handleiding…")
+    version = version or run(
+        "uv",
+        "run",
+        "python",
+        "-c",
+        "import mp3sanitizer; print(mp3sanitizer.__version__)",
+        capture=True,
+    )
+    shots = ROOT / "build" / "manual" / "screenshots"
+    shutil.rmtree(shots, ignore_errors=True)
+    DIST.mkdir(exist_ok=True)
+    pdf = DIST / manual_name(version)
+    run("uv", "run", "python", "docs/manual/screenshots.py", str(shots), timeout=600)
+    run(
+        "uv",
+        "run",
+        "python",
+        "docs/manual/build_pdf.py",
+        str(shots),
+        str(pdf),
+        version,
+        timeout=300,
+    )
+    print(f"   {pdf.relative_to(ROOT)} ({pdf.stat().st_size / 1e3:.0f} KB)")
+    return pdf
 
 
 def release(version: str, *, push: bool, no_build: bool, dry: bool) -> None:
@@ -205,6 +242,8 @@ def main(argv: list[str] | None = None) -> int:
     p_release.add_argument("--dry-run", action="store_true", help="alleen tonen wat er gebeurt")
     p_build = sub.add_parser("build", help="PyInstaller-build + smoke-test + zip")
     p_build.add_argument("--version", help="verwachte versie (standaard: huidige)")
+    p_manual = sub.add_parser("manual", help="alleen de PDF-handleiding bouwen")
+    p_manual.add_argument("--version", help="versie op de titelpagina (standaard: huidige)")
     p_notes = sub.add_parser("notes", help="changelogsectie van een versie tonen")
     p_notes.add_argument("version")
     args = parser.parse_args(argv)
@@ -213,6 +252,8 @@ def main(argv: list[str] | None = None) -> int:
             release(args.version, push=args.push, no_build=args.no_build, dry=args.dry_run)
         elif args.command == "build":
             build(args.version)
+        elif args.command == "manual":
+            build_manual(args.version)
         else:
             print(changelog_section(CHANGELOG.read_text(encoding="utf-8"), args.version))
     except ReleaseError as exc:

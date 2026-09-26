@@ -39,7 +39,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: Install
         run: uv sync --locked
-      - name: Build (PyInstaller + smoke-test + zip)
+      - name: Build (PyInstaller + smoke-test + zip + handleiding)
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}".TrimStart("v")
@@ -50,4 +50,6 @@ jobs:
         with:
           name: Mp3Sanitizer ${{ github.ref_name }}
           body_path: release-notes.md
-          files: dist/mp3sanitizer-*-win64.zip
+          files: |
+            dist/mp3sanitizer-*-win64.zip
+            dist/Mp3Sanitizer-handleiding-*.pdf
