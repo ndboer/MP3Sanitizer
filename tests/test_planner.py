@@ -205,3 +205,31 @@ def test_tags_only_plan(tmp_path):
     assert not plan.renames
     assert PlanWarning.TAGS_ONLY in plan.warnings
     assert plan.tags is not None and plan.tags.date == "1990"
+
+
+def test_copy_number_disappears_on_save_and_never_overwrites_original(tmp_path):
+    from mp3sanitizer.core.scanner import track_from_path
+
+    original = _touch(tmp_path / "Queen - Innuendo (1991).mp3")
+    copy = _touch(tmp_path / "Queen - Innuendo (1991)(2).mp3")
+    tracks = [track_from_path(0, original, tmp_path), track_from_path(1, copy, tmp_path)]
+    assert tracks[1].copy_number == 2
+    inputs = [_inp(t.id, t.path, t.artist, t.title, t.year, changed=False) for t in tracks]
+    [plan] = plan_renames(inputs, PlanOptions(tmp_path, include_unchanged=True))
+    assert plan.track_id == 1
+    assert plan.dst.name == "Queen - Innuendo (1991).mp3"
+    assert plan.blocked  # origineel bestaat al: overslaan (standaard)
+    assert PlanWarning.EXISTS in plan.warnings
+
+
+def test_copy_number_alone_is_renamed_to_clean_name(tmp_path):
+    from mp3sanitizer.core.scanner import track_from_path
+
+    copy = _touch(tmp_path / "Queen - Innuendo (1991)(2).mp3")
+    t = track_from_path(0, copy, tmp_path)
+    [plan] = plan_renames(
+        [_inp(0, t.path, t.artist, t.title, t.year, changed=False)],
+        PlanOptions(tmp_path, include_unchanged=True),
+    )
+    assert not plan.blocked
+    assert plan.dst.name == "Queen - Innuendo (1991).mp3"

@@ -46,6 +46,7 @@ class Track:
     title: str
     year: int | None
     info: AudioInfo | None = None
+    copy_number: int | None = None  # '(2)' na het jaar: waarschijnlijk een kopie
 
     @property
     def filename(self) -> str:
