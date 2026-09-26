@@ -985,13 +985,13 @@ class MainWindow(QMainWindow):
             self._flash(self.undo_stack.undoText())
 
     def revert_selected(self) -> None:
-        if self.model.revert(self.selected_track_ids()):
+        if self.model.revert_tracks(self.selected_track_ids()):
             self._flash(self.undo_stack.undoText())
         else:
             self._flash("Geen wijzigingen om terug te draaien")
 
     def revert_all(self) -> None:
-        if self.model.revert(sorted(self.model.edits.changed_ids)):
+        if self.model.revert_tracks(sorted(self.model.edits.changed_ids)):
             self._flash(self.undo_stack.undoText() + " — ongedaan maken met Ctrl+Z")
 
     @Slot()

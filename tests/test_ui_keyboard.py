@@ -123,3 +123,23 @@ def test_close_asks_confirmation_with_pending_changes(window, monkeypatch):
     assert not window.close()
     assert "1 tracks met niet-opgeslagen wijzigingen" in asked[0]
     assert window.isVisible()
+
+
+def test_escape_in_editor_cancels_without_error(window):
+    """Qt roept model.revert() aan bij Esc; dat mocht niet botsen met onze eigen methode."""
+    import sys
+
+    errors = []
+    old_hook = sys.excepthook
+    sys.excepthook = lambda *exc: errors.append(exc)
+    try:
+        QTest.keyClick(window.table, Qt.Key.Key_F2)
+        editor = QApplication.focusWidget()
+        QTest.keyClicks(editor, "iets anders")
+        QTest.keyClick(editor, Qt.Key.Key_Escape)
+        _flush()
+    finally:
+        sys.excepthook = old_hook
+    assert errors == []
+    assert _row_text(window, 0, Col.ARTIST) == "ABBA"  # niets gewijzigd
+    assert window.model.changed_count() == 0

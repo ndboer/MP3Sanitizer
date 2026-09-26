@@ -514,7 +514,9 @@ class TrackTableModel(QAbstractTableModel):
         n = len(changes) // 2
         return self.push_changes(changes, f"Wissel artiest ⇄ titel ({n} tracks)")
 
-    def revert(self, track_ids: Iterable[int]) -> bool:
+    # Niet "revert" noemen: dat is een virtuele Qt-methode (QAbstractItemModel.revert) die Qt
+    # zonder argumenten aanroept als een editor met Esc wordt geannuleerd.
+    def revert_tracks(self, track_ids: Iterable[int]) -> bool:
         changes = self.edits.revert_changes(track_ids)
         n = len({c.track_id for c in changes})
         return self.push_changes(changes, f"Terugdraaien ({n} tracks)")
