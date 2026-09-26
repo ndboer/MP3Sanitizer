@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-26
+
 ### Fixed
 - Een volgnummer na het jaar (`Titel (1985)(2)` of `Titel (1985) (2)`) wordt genegeerd bij het
   parsen: het jaar wordt herkend en het nummer komt niet meer in de titel. De Status-tooltip
