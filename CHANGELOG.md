@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-09-26
+
 ### Added
 - Handleiding (PDF, Nederlands) met screenshots van de echte app en onderschriften; wordt bij
   elke release gebouwd (`scripts/release.py manual`) en als download bij de GitHub-release gezet.
