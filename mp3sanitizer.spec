@@ -52,6 +52,9 @@ a = Analysis(
         "PySide6.QtPdf",
         "tkinter",
         "pytest",
+        # alleen voor de handleiding (dev-omgeving); niet in de app
+        "PIL",
+        "reportlab",
     ],
     noarchive=False,
 )
