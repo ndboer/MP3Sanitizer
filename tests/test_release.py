@@ -58,3 +58,7 @@ def test_real_changelog_has_unreleased_section():
     text = (Path(__file__).parents[1] / "CHANGELOG.md").read_text(encoding="utf-8")
     assert release.UNRELEASED in text
     release.changelog_section(text, "0.1.0")
+
+
+def test_manual_name():
+    assert release.manual_name("0.10.2") == "Mp3Sanitizer-handleiding-0.10.2.pdf"

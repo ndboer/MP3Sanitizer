@@ -7,6 +7,10 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Added
+- Handleiding (PDF, Nederlands) met screenshots van de echte app en onderschriften; wordt bij
+  elke release gebouwd (`scripts/release.py manual`) en als download bij de GitHub-release gezet.
+
 ### Fixed
 - Een cel-editor annuleren met Esc gaf een foutmelding in de achtergrond (de eigen
   terugdraaifunctie van het tabelmodel botste met Qt's `revert()`).

@@ -4,7 +4,9 @@ Desktop-applicatie (Python + PySide6) om een muziekcollectie van duizenden audio
 inventariseren, op te schonen en te hernoemen op basis van de bestandsnaam
 `<Artiest> - <Titel> (<Jaar>)`.
 
-Zie [CHANGELOG.md](CHANGELOG.md) voor wat er per versie is veranderd.
+Zie [CHANGELOG.md](CHANGELOG.md) voor wat er per versie is veranderd. Bij elke
+[release](https://github.com/ndboer/MP3Sanitizer/releases) staat ook een uitgebreide
+**handleiding (PDF)** met screenshots.
 
 ## Installatie
 
@@ -265,10 +267,13 @@ Het script:
    `chore(release): vX.Y.Z`;
 3. maakt de tag `vX.Y.Z`;
 4. bouwt met PyInstaller, draait de smoke-test en verpakt `dist\mp3sanitizer-X.Y.Z-win64.zip`;
+   maakt daarna screenshots van de echte app en bouwt `dist\Mp3Sanitizer-handleiding-X.Y.Z.pdf`;
 5. met `--push`: `git push --follow-tags`.
 
 Op GitHub draait bij elke push ruff + pytest (Windows). Bij een `v*`-tag bouwt de CI de zip
-opnieuw en publiceert die als release-asset, met de changelogsectie als releasetekst.
+opnieuw, bouwt de handleiding en publiceert beide als release-asset, met de changelogsectie als
+releasetekst. Alleen de handleiding bouwen: `uv run python scripts/release.py manual`. De
+bronnen staan in `docs/manual/` (`screenshots.py` en `build_pdf.py`).
 
 ## Licentie
 
