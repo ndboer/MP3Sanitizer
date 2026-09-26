@@ -133,7 +133,7 @@ def test_swap_and_revert(setup):
     assert (model.edits.artist(1), model.edits.title(1)) == ("Beatles", "Help!")
     assert stack.undoText() == "Wissel artiest ⇄ titel (1 tracks)"
     model.setData(_cell(model, 1, Col.YEAR), "1965", EDIT)
-    assert model.revert([1])
+    assert model.revert_tracks([1])
     assert not model.edits.is_changed(1)
     stack.undo()  # terugdraaien is zelf ongedaan te maken
     assert model.edits.year(1) == 1965

@@ -7,6 +7,10 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Fixed
+- Een cel-editor annuleren met Esc gaf een foutmelding in de achtergrond (de eigen
+  terugdraaifunctie van het tabelmodel botste met Qt's `revert()`).
+
 ## [0.10.1] - 2026-09-26
 
 ### Fixed
