@@ -88,11 +88,14 @@ def zip_name(version: str) -> str:
 # --- stappen ---------------------------------------------------------------------------------
 
 
-def run(*cmd: str, capture: bool = False, dry: bool = False) -> str:
+def run(*cmd: str, capture: bool = False, dry: bool = False, timeout: float | None = None) -> str:
     print("  $", " ".join(cmd))
     if dry and not capture:
         return ""
-    result = subprocess.run(cmd, cwd=ROOT, capture_output=capture, text=True)
+    try:
+        result = subprocess.run(cmd, cwd=ROOT, capture_output=capture, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise ReleaseError(f"Commando duurde langer dan {timeout:.0f} s: {' '.join(cmd)}") from exc
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip() if capture else ""
         raise ReleaseError(f"Commando mislukt ({result.returncode}): {' '.join(cmd)}\n{detail}")
@@ -122,7 +125,8 @@ def check_repository(version: str) -> None:
 
 def run_checks(dry: bool) -> None:
     print("   tests en ruff…")
-    run("uv", "run", "pytest", "-q", "-p", "no:cacheprovider", dry=dry)
+    # Een hangende test mag de release nooit eeuwig laten wachten.
+    run("uv", "run", "pytest", "-q", "-p", "no:cacheprovider", dry=dry, timeout=900)
     run("uv", "run", "ruff", "check", ".", dry=dry)
     run("uv", "run", "ruff", "format", "--check", ".", dry=dry)
 

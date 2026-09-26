@@ -50,3 +50,5 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Hangt een test toch, dan een traceback in plaats van stilte.
+faulthandler_timeout = 60
