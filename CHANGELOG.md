@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.10.5] - 2026-09-27
+
 ### Fixed
 - De handleiding wordt op de CI offscreen gebouwd (daar is geen betrouwbare desktopsessie),
   zodat de PDF weer bij de GitHub-release komt. Deze versie bevat ook alles uit 0.10.4, dat
