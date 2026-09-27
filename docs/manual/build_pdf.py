@@ -583,6 +583,24 @@ story += [
             "<b>Toepassen</b> past alle aangevinkte tracks aan in één undo-stap.",
         ]
     ),
+    h2("Samenwerkingen"),
+    p(
+        "Een artiestveld kan meerdere artiesten bevatten, zoals “Queen &amp; David Bowie”, "
+        "“Eminem ft. Dido” of “A, B &amp; C” (ook x, vs., with, met, and, en). Zoeken vindt ook "
+        "de losse artiesten daarin, en bij Toepassen wordt <b>alleen die artiest</b> vervangen: "
+        "“queen &amp; David Bowie” wordt “Queen &amp; David Bowie”; David Bowie blijft staan."
+    ),
+    *bullets(
+        [
+            "Een groep met het complete samenwerkingsveld (“— samenwerking, hele veld”) staat "
+            "standaard uit, zodat de andere artiesten nooit per ongeluk verdwijnen.",
+            "Staan zowel de losse artiest als het hele veld aan, dan wint de losse artiest.",
+            "“Beatles, The” blijft één artiest en “AC/DC” wordt niet gesplitst.",
+            "Opzoeken op MusicBrainz via rechtsklik zoekt bij een samenwerking op de eerste "
+            "artiest en vervangt alleen die; samenwerkingen zonder die artiest worden "
+            "overgeslagen.",
+        ]
+    ),
     h2("Overzicht en voorstellen"),
     p(
         f"Het tabblad <i>Overzicht en voorstellen</i> ({kbd('Ctrl+Shift+A')}) toont alle "

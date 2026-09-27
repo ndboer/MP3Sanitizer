@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from mp3sanitizer import __version__
+from mp3sanitizer.core.artists import artist_names, is_collaboration, replace_artist
 from mp3sanitizer.core.deleter import DeleteItem, DeleteResult, Trash
 from mp3sanitizer.core.duplicates import DupItem, DupOptions, find_duplicates
 from mp3sanitizer.core.executor import ExecResult
@@ -604,11 +605,30 @@ class MainWindow(QMainWindow):
         ids = self.selected_track_ids()
         if not ids:
             return
-        name = self.model.edits.artist(ids[0])
+        e, articles = self.model.edits, self._settings.articles
+        # Bij een samenwerking ("Queen & David Bowie") standaard op de eerste artiest zoeken.
+        names = artist_names(e.artist(ids[0]), articles)
+        name = names[0] if names else e.artist(ids[0])
         dialog = MusicBrainzDialog(self.mb_client_factory(), name, self._pool, self)
         chosen = dialog.chosen if dialog.exec() else None
-        if chosen is not None and self.model.set_field(ids, Field.ARTIST, chosen.name):
-            self._flash(self.undo_stack.undoText())
+        if chosen is None:
+            return
+        query = " ".join(dialog.query_edit.text().split())
+        pairs: list[tuple[int, str]] = []
+        skipped = 0
+        for tid in ids:
+            artist = e.artist(tid)
+            if replace_artist(artist, query, chosen.name, articles) is not None:
+                pairs.append((tid, query))  # alleen die artiest vervangen
+            elif not is_collaboration(artist, articles):
+                pairs.append((tid, artist))  # losse artiest: het hele veld
+            else:
+                skipped += 1  # samenwerking zonder de gezochte artiest: niet aanraken
+        if self.model.rename_artist(pairs, chosen.name):
+            message = self.undo_stack.undoText()
+            if skipped:
+                message += f"; {skipped} samenwerkingen zonder “{query}” overgeslagen"
+            self._flash(message, 8000)
 
     # --- help / updates ------------------------------------------------------------------
     def show_about(self) -> None:

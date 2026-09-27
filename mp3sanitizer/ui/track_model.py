@@ -16,6 +16,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPersistentModelInd
 from PySide6.QtGui import QColor, QFont, QIcon, QUndoStack
 from PySide6.QtWidgets import QApplication, QStyle
 
+from mp3sanitizer.core.artists import artist_names, replace_artist
 from mp3sanitizer.core.duplicates import DupItem
 from mp3sanitizer.core.edits import EditState
 from mp3sanitizer.core.models import (
@@ -290,16 +291,46 @@ class TrackTableModel(QAbstractTableModel):
     def changed_count(self) -> int:
         return len(self.edits)
 
-    def artist_index(self) -> dict[str, list[int]]:
-        """Per (effectieve) schrijfwijze de track-ids; zonder verwijderde en lege artiesten."""
+    def artist_index(self, include_parts: bool = False) -> dict[str, list[int]]:
+        """Per (effectieve) schrijfwijze de track-ids; zonder verwijderde en lege artiesten.
+
+        Met ``include_parts`` staan ook de losse artiesten uit samenwerkingen erin
+        ("Queen & David Bowie" telt dan ook mee bij "Queen" en bij "David Bowie").
+        """
         index: dict[str, list[int]] = {}
         for t in self._tracks:
             if t.id in self._deleted:
                 continue
             artist = self.edits.artist(t.id)
-            if artist.strip():
-                index.setdefault(artist, []).append(t.id)
+            if not artist.strip():
+                continue
+            index.setdefault(artist, []).append(t.id)
+            if include_parts:
+                for name in dict.fromkeys(artist_names(artist, self._articles)):
+                    if name != artist:
+                        index.setdefault(name, []).append(t.id)
         return index
+
+    def rename_artist(self, pairs: Iterable[tuple[int, str]], new: str) -> bool:
+        """Vervang per track de schrijfwijze ``old`` door ``new`` (één undo-stap).
+
+        In een samenwerking ("Queen & David Bowie") wordt alleen die ene artiest vervangen;
+        is het hele veld gelijk aan ``old``, dan wordt het hele veld ``new``.
+        """
+        e = self.edits
+        result: dict[int, str] = {}
+        for tid, old in pairs:
+            current = result.get(tid, e.artist(tid))
+            replaced = replace_artist(current, old, new, self._articles)
+            if replaced is not None:
+                result[tid] = replaced
+        changes = [
+            PendingChange(tid, Field.ARTIST, e.artist(tid), value, "artist")
+            for tid, value in result.items()
+            if value != e.artist(tid)
+        ]
+        n = len(changes)
+        return self.push_changes(changes, f"Artiest → {new} ({n} tracks)")
 
     def correction_inputs(self, track_ids: Iterable[int]) -> list[CorrectionInput]:
         """Invoer voor de batch-correcties: effectieve waarden + tag-jaar."""

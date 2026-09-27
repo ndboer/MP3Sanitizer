@@ -99,6 +99,11 @@ Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zo
   de gekozen kandidaat vult de officiële naam in. Maximaal één verzoek per seconde; resultaten
   worden 30 dagen gecachet in `%LOCALAPPDATA%\Mp3Sanitizer\musicbrainz_cache.json`. Ook
   beschikbaar via rechtsklik op een rij (toepassen op de geselecteerde rijen).
+- **Samenwerkingen** ("Queen & David Bowie", "Eminem ft. Dido", "A, B & C", "A x B", "A vs. B",
+  "A with B"): zoeken vindt ook de losse artiesten erin, en bij toepassen wordt **alleen die
+  artiest** vervangen ("queen & David Bowie" → "Queen & David Bowie"). Een groep met het complete
+  samenwerkingsveld staat standaard uit, zodat de andere artiesten nooit per ongeluk verdwijnen.
+  "Beatles, The" blijft één artiest; "AC/DC" wordt niet gesplitst.
 - **Artiestenoverzicht en voorstellen** (Ctrl+Shift+A) toont alle artiesten met aantallen en
   stelt clusters voor van waarschijnlijk dezelfde artiest, met de meestgebruikte schrijfwijze
   als voorstel.
