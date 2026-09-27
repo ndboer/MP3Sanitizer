@@ -44,7 +44,9 @@ pdfmetrics.registerFont(TTFont("Segoe-Italic", str(FONTS / "segoeuii.ttf")))
 pdfmetrics.registerFont(TTFont("Segoe-BoldItalic", str(FONTS / "segoeuiz.ttf")))
 pdfmetrics.registerFont(TTFont("Segoe-Semi", str(FONTS / "seguisb.ttf")))
 pdfmetrics.registerFont(TTFont("Mono", str(FONTS / "consola.ttf")))
-pdfmetrics.registerFont(TTFont("Sym", str(FONTS / "seguisym.ttf")))
+# Segoe UI Symbol ontbreekt soms (bijv. op een kale Windows Server): dan Segoe UI zelf.
+_SYM = FONTS / "seguisym.ttf"
+pdfmetrics.registerFont(TTFont("Sym", str(_SYM if _SYM.exists() else FONTS / "segoeui.ttf")))
 pdfmetrics.registerFontFamily(
     "Segoe", normal="Segoe", bold="Segoe-Bold", italic="Segoe-Italic", boldItalic="Segoe-BoldItalic"
 )

@@ -21,6 +21,7 @@ Stappen van ``release``:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import subprocess
@@ -94,12 +95,25 @@ def manual_name(version: str) -> str:
 # --- stappen ---------------------------------------------------------------------------------
 
 
-def run(*cmd: str, capture: bool = False, dry: bool = False, timeout: float | None = None) -> str:
+def run(
+    *cmd: str,
+    capture: bool = False,
+    dry: bool = False,
+    timeout: float | None = None,
+    env: dict[str, str] | None = None,
+) -> str:
     print("  $", " ".join(cmd))
     if dry and not capture:
         return ""
     try:
-        result = subprocess.run(cmd, cwd=ROOT, capture_output=capture, text=True, timeout=timeout)
+        result = subprocess.run(
+            cmd,
+            cwd=ROOT,
+            capture_output=capture,
+            text=True,
+            timeout=timeout,
+            env={**os.environ, **env} if env else None,
+        )
     except subprocess.TimeoutExpired as exc:
         raise ReleaseError(f"Commando duurde langer dan {timeout:.0f} s: {' '.join(cmd)}") from exc
     if result.returncode != 0:
@@ -201,7 +215,14 @@ def build_manual(version: str | None = None) -> Path:
     shutil.rmtree(shots, ignore_errors=True)
     DIST.mkdir(exist_ok=True)
     pdf = DIST / manual_name(version)
-    run("uv", "run", "python", "docs/manual/screenshots.py", str(shots), timeout=600)
+    # Op de CI is er geen betrouwbare desktopsessie: daar offscreen renderen (met de
+    # Windows-lettertypen). Lokaal het echte Windows-uiterlijk.
+    env = (
+        {"QT_QPA_PLATFORM": "offscreen", "QT_QPA_FONTDIR": r"C:\Windows\Fonts"}
+        if os.environ.get("CI")
+        else None
+    )
+    run("uv", "run", "python", "docs/manual/screenshots.py", str(shots), timeout=600, env=env)
     run(
         "uv",
         "run",
