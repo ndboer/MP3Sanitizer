@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-09-27
+
 ### Fixed
 - Artiesten corrigeren houdt rekening met samenwerkingen ("Queen & David Bowie",
   "Eminem ft. Dido", "A, B & C", x, vs., with, met, and, en): alleen de gekozen artiest wordt
