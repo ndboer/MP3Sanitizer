@@ -308,3 +308,28 @@ def test_musicbrainz_lookup_replaces_only_searched_artist(qapp, tmp_path, monkey
         assert prince == "Queen"  # losse artiest: hele veld (zoals voorheen)
     e.clear()
     w.close()
+
+
+def test_cluster_musicbrainz_fills_official_name(model, pool, monkeypatch):
+    from mp3sanitizer.ui import artist_search
+
+    asked = []
+
+    class Choose:
+        def __init__(self, client, name, pool, parent=None):
+            asked.append(name)
+            self.chosen = ArtistCandidate("b10b", "The Beatles", "Beatles, The", "GB", "", 100)
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(artist_search, "MusicBrainzDialog", Choose)
+    d = _dialog(model, pool)
+    wait_for(lambda: d.clusters.topLevelItemCount() > 0)
+    d.clusters.setCurrentItem(d.clusters.topLevelItem(0))
+    d.cluster_edit.setText("beatles")
+    d.cluster_mb_button.click()
+    assert asked == ["beatles"]
+    assert d.cluster_edit.text() == "The Beatles"  # officiële naam, niet de sort-name
+    d.apply_cluster()
+    assert model.edits.artist(2) == "The Beatles"
