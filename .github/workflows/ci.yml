@@ -43,13 +43,18 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}".TrimStart("v")
+          # Elke stap controleren: in PowerShell telt anders alleen het laatste commando.
           uv run python scripts/release.py build --version $version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path "dist/Mp3Sanitizer-handleiding-$version.pdf")) { throw "Handleiding ontbreekt" }
           uv run python scripts/release.py notes $version | Out-File -Encoding utf8 release-notes.md
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           name: Mp3Sanitizer ${{ github.ref_name }}
           body_path: release-notes.md
+          fail_on_unmatched_files: true
           files: |
             dist/mp3sanitizer-*-win64.zip
             dist/Mp3Sanitizer-handleiding-*.pdf
