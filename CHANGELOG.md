@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-09-27
+
 ### Added
 - Artiestenoverzicht: knop "Opzoeken op MusicBrainz" naast het clustervoorstel om de
   officiële schrijfwijze in te vullen.
