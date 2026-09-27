@@ -268,6 +268,11 @@ class ArtistDialog(QDialog):
         self.cluster_status = QLabel(tab)
         self.cluster_edit = QLineEdit(tab)
         self.cluster_edit.setPlaceholderText("Schrijfwijze voor dit cluster")
+        self.cluster_mb_button = QPushButton("Opzoeken op Mu&sicBrainz…", tab)
+        self.cluster_mb_button.setToolTip(
+            "De officiële schrijfwijze van MusicBrainz invullen als voorstel"
+        )
+        self.cluster_mb_button.clicked.connect(self.lookup_cluster_musicbrainz)
         self.cluster_apply = QPushButton("Toepassen op &cluster", tab)
         self.cluster_apply.clicked.connect(self.apply_cluster)
 
@@ -284,6 +289,7 @@ class ArtistDialog(QDialog):
         rv.addWidget(self.cluster_status)
         row = QHBoxLayout()
         row.addWidget(self.cluster_edit, 1)
+        row.addWidget(self.cluster_mb_button)
         row.addWidget(self.cluster_apply)
         rv.addLayout(row)
         splitter = QSplitter(tab)
@@ -405,6 +411,16 @@ class ArtistDialog(QDialog):
             self.search_status.setText(f"{n} tracks aangepast naar “{value}”.")
         self.correct_edit.setModified(False)
         self.refresh()
+
+    def lookup_cluster_musicbrainz(self) -> None:
+        """Vul het clustervoorstel met de officiële naam van MusicBrainz."""
+        name = self.cluster_edit.text().strip()
+        if not name:
+            return
+        dialog = MusicBrainzDialog(self._mb_factory(), name, self._pool, self)
+        if dialog.exec() and dialog.chosen is not None:
+            self.cluster_edit.setText(dialog.chosen.name)
+            self._update_cluster_button()
 
     def lookup_musicbrainz(self) -> None:
         name = self.correct_edit.text().strip() or self.query_edit.text().strip()
