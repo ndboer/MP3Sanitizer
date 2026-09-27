@@ -8,6 +8,12 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 ## [Unreleased]
 
 ### Fixed
+- Artiesten corrigeren houdt rekening met samenwerkingen ("Queen & David Bowie",
+  "Eminem ft. Dido", "A, B & C", x, vs., with, met, and, en): alleen de gekozen artiest wordt
+  vervangen, de andere artiesten blijven staan. Zoeken en clustervoorstellen vinden ook de losse
+  artiesten in samenwerkingen; een groep met het complete samenwerkingsveld staat standaard uit.
+  Opzoeken op MusicBrainz via het contextmenu vervangt in samenwerkingen alleen de gezochte
+  artiest.
 - De Windows-build bevatte onnodig Pillow (±13 MB) uit de ontwikkelomgeving; die wordt nu
   uitgesloten.
 

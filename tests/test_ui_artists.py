@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import Qt, QThreadPool
 from PySide6.QtGui import QUndoStack
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication, QDialog, QLineEdit
 
 from mp3sanitizer.core.musicbrainz import ArtistCandidate, MusicBrainzError
 from mp3sanitizer.core.scanner import track_from_path
@@ -99,7 +99,7 @@ def test_apply_to_checked_is_one_undo_step(model, pool):
     assert artists[:4] == ["The Beatles"] * 4
     assert artists[4] == "The Beatels"
     assert model.undo_stack.count() == 1
-    assert model.undo_stack.undoText() == "Artiest invullen (2 tracks)"  # 2 waren al goed
+    assert model.undo_stack.undoText() == "Artiest → The Beatles (2 tracks)"  # 2 waren al goed
     model.undo_stack.undo()
     assert model.edits.artist(2) == "Beatles"
 
@@ -174,7 +174,7 @@ def test_lookup_from_context_menu_applies_to_selection(qapp, tmp_path, monkeypat
     class ChooseFirst:
         def __init__(self, client, name, pool, parent=None):
             self.chosen = ArtistCandidate("b10b", "The Beatles", "Beatles, The", "GB", "", 100)
-            self.name = name
+            self.query_edit = QLineEdit(name)
 
         def exec(self):
             return QDialog.DialogCode.Accepted
@@ -191,3 +191,120 @@ def test_overview_sorts_by_sort_key(model, pool):
     d = _dialog(model, pool)
     names = [d.overview.topLevelItem(i).text(0) for i in range(d.overview.topLevelItemCount())]
     assert names.index("The Beatles") < names.index("Queen")
+
+
+# --- samenwerkingen ----------------------------------------------------------------------
+
+COLLAB = [
+    "queen - Innuendo (1991).mp3",
+    "queen & David Bowie - Under Pressure (1981).mp3",
+    "David Bowie & queen - Live Pressure (1982).mp3",
+    "Queen & David Bowie - Cool Cats (1982).mp3",
+]
+
+
+@pytest.fixture
+def collab_model(qapp, tmp_path: Path):
+    m = TrackTableModel()
+    m.undo_stack = QUndoStack()
+    m.append_tracks([track_from_path(i, tmp_path / n, tmp_path) for i, n in enumerate(COLLAB)])
+    return m
+
+
+def test_search_finds_artist_inside_collaborations(collab_model, pool):
+    d = _dialog(collab_model, pool, query="queen")
+    groups = _groups(d)
+    assert groups[0] == "queen (3)"  # solo + twee samenwerkingen met 'queen'
+    collab_groups = [g for g in groups if "samenwerking" in g]
+    assert collab_groups  # het hele samenwerkingsveld is ook vindbaar ...
+    for i in range(d.results.topLevelItemCount()):
+        item = d.results.topLevelItem(i)
+        if "samenwerking" in item.text(0):
+            assert item.checkState(0) == Qt.CheckState.Unchecked  # ... maar standaard uit
+
+
+def test_apply_replaces_only_that_artist(collab_model, pool):
+    d = _dialog(collab_model, pool, query="queen")
+    d.correct_edit.setText("Queen")
+    d.apply_search()
+    artists = [collab_model.edits.artist(i) for i in range(len(COLLAB))]
+    assert artists == [
+        "Queen",
+        "Queen & David Bowie",  # David Bowie blijft staan
+        "David Bowie & Queen",
+        "Queen & David Bowie",
+    ]
+    assert collab_model.undo_stack.count() == 1
+
+
+def test_part_wins_over_whole_collaboration_when_both_checked(collab_model, pool):
+    d = _dialog(collab_model, pool, query="queen")
+    for i in range(d.results.topLevelItemCount()):
+        d.results.topLevelItem(i).setCheckState(0, Qt.CheckState.Checked)  # alles aan
+    d.correct_edit.setText("Queen")
+    d.apply_search()
+    assert collab_model.edits.artist(1) == "Queen & David Bowie"  # niet alleen "Queen"
+
+
+def test_overview_lists_fields_clusters_see_parts(collab_model, pool):
+    d = ArtistDialog(collab_model, pool, lambda: FakeMB(), threshold=85, query="")
+    names = {d.overview.topLevelItem(i).text(0) for i in range(d.overview.topLevelItemCount())}
+    assert "David Bowie" not in names  # overzicht: velden zoals ze zijn
+    assert "queen & David Bowie" in names
+    wait_for(lambda: d.clusters.topLevelItemCount() > 0)
+    clusters = [d.clusters.topLevelItem(i) for i in range(d.clusters.topLevelItemCount())]
+
+    def members(top):
+        return {top.child(j).text(0) for j in range(top.childCount())}
+
+    queen = next(c for c in clusters if {"queen", "Queen"} <= members(c))
+    d.clusters.setCurrentItem(queen)
+    d.cluster_edit.setText("Queen")
+    d.apply_cluster()
+    assert collab_model.edits.artist(2) == "David Bowie & Queen"
+
+
+def test_musicbrainz_lookup_replaces_only_searched_artist(qapp, tmp_path, monkeypatch):
+    from mp3sanitizer.core.journal import JournalStore
+    from mp3sanitizer.core.settings import SettingsStore
+    from mp3sanitizer.ui.main_window import MainWindow
+
+    music = tmp_path / "m"
+    music.mkdir()
+    for n in [*COLLAB, "Prince - 1999 (1982).mp3"]:
+        (music / n).write_bytes(b"")
+    w = MainWindow(SettingsStore.load(tmp_path / "c"), QThreadPool(), JournalStore(tmp_path / "j"))
+    w.start_scan(music)
+    wait_for(lambda: not w.busy)
+    queries = []
+
+    class ChooseQueen:
+        def __init__(self, client, name, pool, parent=None):
+            queries.append(name)
+            self.chosen = ArtistCandidate("0383", "Queen", "Queen", "GB", "", 100)
+            self.query_edit = QLineEdit(name)
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(main_window_module, "MusicBrainzDialog", ChooseQueen)
+    ids = {t.filename: t.id for t in w.model.tracks}
+    sm = w.table.selectionModel()
+    from PySide6.QtCore import QItemSelectionModel
+
+    flags = QItemSelectionModel.SelectionFlag
+    sm.clearSelection()
+    for r in range(w.proxy.rowCount()):
+        name = w.proxy.index(r, 5).data()
+        if name in ("queen & David Bowie - Under Pressure (1981).mp3", "Prince - 1999 (1982).mp3"):
+            sm.select(w.proxy.index(r, 0), flags.Select | flags.Rows)
+    w.lookup_musicbrainz()
+    e = w.model.edits
+    assert queries and queries[0] in ("queen", "Prince")
+    under_pressure = e.artist(ids["queen & David Bowie - Under Pressure (1981).mp3"])
+    prince = e.artist(ids["Prince - 1999 (1982).mp3"])
+    if queries[0] == "queen":
+        assert under_pressure == "Queen & David Bowie"
+        assert prince == "Queen"  # losse artiest: hele veld (zoals voorheen)
+    e.clear()
+    w.close()

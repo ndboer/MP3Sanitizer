@@ -26,13 +26,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from mp3sanitizer.core.artists import is_collaboration
 from mp3sanitizer.core.fuzzy import (
     ArtistMatch,
     Cluster,
     cluster_artists,
     search_artists,
 )
-from mp3sanitizer.core.models import Field
 from mp3sanitizer.core.musicbrainz import ArtistCandidate, MusicBrainzClient, MusicBrainzError
 from mp3sanitizer.core.normalize import DEFAULT_ARTICLES, natural_key, sort_key
 from mp3sanitizer.ui.track_model import ERROR_COLOR, TrackTableModel
@@ -184,6 +184,7 @@ class ArtistDialog(QDialog):
         self._mb_factory = mb_client_factory
         self._articles = tuple(articles)
         self._jobs = JobRunner(pool, self)
+        # Schrijfwijze -> track-ids, inclusief losse artiesten uit samenwerkingen.
         self._index: dict[str, list[int]] = {}
 
         self.tabs = QTabWidget(self)
@@ -296,11 +297,13 @@ class ArtistDialog(QDialog):
     # --- gegevens ------------------------------------------------------------------------
     def refresh(self) -> None:
         """Lees de (effectieve) artiesten opnieuw uit het model en werk alles bij."""
-        self._index = self.model.artist_index()
+        self._index = self.model.artist_index(include_parts=True)
         counts = {a: len(ids) for a, ids in self._index.items()}
         self.overview.setSortingEnabled(False)
         self.overview.clear()
-        for artist, n in counts.items():
+        # Het overzicht toont de artiestvelden zoals ze zijn (niet de losse delen).
+        full = {a: len(ids) for a, ids in self.model.artist_index().items()}
+        for artist, n in full.items():
             item = _ArtistItem([artist, ""])
             item.setData(1, Qt.ItemDataRole.DisplayRole, n)
             self.overview.addTopLevelItem(item)
@@ -337,16 +340,21 @@ class ArtistDialog(QDialog):
         self.results.clear()
         total = 0
         for m in matches:
+            # Een complete samenwerking als groep staat standaard uit: het hele veld
+            # vervangen zou de andere artiest(en) wissen. De losse artiest staat wel aan.
+            collab = is_collaboration(m.spelling, self._articles)
+            state = Qt.CheckState.Unchecked if collab else Qt.CheckState.Checked
             group = QTreeWidgetItem([m.spelling, str(m.count), f"{m.score:.0f}"])
             group.setFlags(_CHECKABLE | Qt.ItemFlag.ItemIsAutoTristate)
-            group.setCheckState(0, Qt.CheckState.Checked)
             group.setData(0, SPELLING_ROLE, m.spelling)
-            group.setText(0, f"{m.spelling} ({m.count})")  # bijv. "Beatles, The (3)"
+            label = f"{m.spelling} ({m.count})"  # bijv. "Beatles, The (3)"
+            group.setText(0, label + ("  — samenwerking, hele veld" if collab else ""))
             for tid in self._index.get(m.spelling, []):
                 child = QTreeWidgetItem([self.model.track_label(tid), "", ""])
                 child.setFlags(_CHECKABLE)
-                child.setCheckState(0, Qt.CheckState.Checked)
+                child.setCheckState(0, state)
                 child.setData(0, TRACK_ID_ROLE, tid)
+                child.setData(0, SPELLING_ROLE, m.spelling)
                 child.setToolTip(0, str(self.model.tracks[tid].path))
                 group.addChild(child)
             self.results.addTopLevelItem(group)
@@ -359,15 +367,30 @@ class ArtistDialog(QDialog):
             self.correct_edit.setText(matches[0].spelling)  # meestgebruikte beste match
         self._update_apply_button()
 
-    def checked_track_ids(self) -> list[int]:
-        ids = []
+    def checked_pairs(self) -> list[tuple[int, str]]:
+        """(track-id, te vervangen schrijfwijze) voor alle aangevinkte tracks."""
+        pairs = []
         for i in range(self.results.topLevelItemCount()):
             group = self.results.topLevelItem(i)
             for j in range(group.childCount()):
                 child = group.child(j)
                 if child.checkState(0) == Qt.CheckState.Checked:
-                    ids.append(child.data(0, TRACK_ID_ROLE))
-        return ids
+                    pairs.append((child.data(0, TRACK_ID_ROLE), child.data(0, SPELLING_ROLE)))
+        return self._prefer_parts(pairs)
+
+    def checked_track_ids(self) -> list[int]:
+        return list(dict.fromkeys(tid for tid, _ in self.checked_pairs()))
+
+    def _prefer_parts(self, pairs: list[tuple[int, str]]) -> list[tuple[int, str]]:
+        """Heeft een track zowel het hele samenwerkingsveld als een losse artiest
+        aangevinkt, dan wint de losse artiest; anders zou de rest van het veld verdwijnen."""
+        e = self.model.edits
+        with_part = {tid for tid, spelling in pairs if spelling != e.artist(tid)}
+        return [
+            (tid, spelling)
+            for tid, spelling in pairs
+            if not (tid in with_part and spelling == e.artist(tid))
+        ]
 
     def _update_apply_button(self) -> None:
         n = len(self.checked_track_ids())
@@ -376,9 +399,10 @@ class ArtistDialog(QDialog):
 
     def apply_search(self) -> None:
         value = " ".join(self.correct_edit.text().split())
-        ids = self.checked_track_ids()
-        if value and ids and self.model.set_field(ids, Field.ARTIST, value):
-            self.search_status.setText(f"{len(ids)} tracks aangepast naar “{value}”.")
+        pairs = self.checked_pairs()
+        if value and pairs and self.model.rename_artist(pairs, value):
+            n = len({tid for tid, _ in pairs})
+            self.search_status.setText(f"{n} tracks aangepast naar “{value}”.")
         self.correct_edit.setModified(False)
         self.refresh()
 
@@ -443,16 +467,20 @@ class ArtistDialog(QDialog):
         item = self.clusters.currentItem()
         return (item.parent() or item) if item else None
 
-    def cluster_track_ids(self) -> list[int]:
+    def cluster_pairs(self) -> list[tuple[int, str]]:
         top = self._current_cluster()
         if top is None:
             return []
-        ids: list[int] = []
+        pairs: list[tuple[int, str]] = []
         for j in range(top.childCount()):
             child = top.child(j)
             if child.checkState(0) == Qt.CheckState.Checked:
-                ids.extend(self._index.get(child.data(0, SPELLING_ROLE), []))
-        return ids
+                spelling = child.data(0, SPELLING_ROLE)
+                pairs.extend((tid, spelling) for tid in self._index.get(spelling, []))
+        return self._prefer_parts(pairs)
+
+    def cluster_track_ids(self) -> list[int]:
+        return list(dict.fromkeys(tid for tid, _ in self.cluster_pairs()))
 
     def _update_cluster_button(self) -> None:
         n = len(self.cluster_track_ids())
@@ -461,9 +489,9 @@ class ArtistDialog(QDialog):
 
     def apply_cluster(self) -> None:
         value = " ".join(self.cluster_edit.text().split())
-        ids = self.cluster_track_ids()
-        if value and ids:
-            self.model.set_field(ids, Field.ARTIST, value)
+        pairs = self.cluster_pairs()
+        if value and pairs:
+            self.model.rename_artist(pairs, value)
         self.refresh()
 
     def done(self, result: int) -> None:
