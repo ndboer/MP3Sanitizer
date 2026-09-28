@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.10.7] - 2026-09-28
+
 ### Fixed
 - Release-build op de CI: fouten van smoke-test en handleiding verschijnen als annotatie en de
   screenshots krijgen één herkansing. 0.10.6 is daardoor niet als GitHub-release verschenen;
