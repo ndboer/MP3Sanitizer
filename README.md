@@ -107,6 +107,8 @@ Snelfilters: 1 Alles, 2 Gewijzigd (niet opgeslagen), 3 Alleen parse-fouten, 4 Zo
 - **Artiestenoverzicht en voorstellen** (Ctrl+Shift+A) toont alle artiesten met aantallen en
   stelt clusters voor van waarschijnlijk dezelfde artiest, met de meestgebruikte schrijfwijze
   als voorstel. Met **Opzoeken op MusicBrainz** naast het voorstel vul je de officiële naam in.
+  Onder elke schrijfwijze staan de tracks (per track uit te vinken; Enter speelt af; tooltip met
+  het pad; rechtsklik → Toon in hoofdvenster).
 
 De score is het gemiddelde van rapidfuzz `token_set_ratio` en `ratio` op de genormaliseerde naam
 (zo is "Beatles Tribute Band" niet hetzelfde als "Beatles", maar "Beatels" wel); bij zoeken telt

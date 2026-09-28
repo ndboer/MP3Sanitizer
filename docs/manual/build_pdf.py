@@ -608,7 +608,9 @@ story += [
         f"Het tabblad <i>Overzicht en voorstellen</i> ({kbd('Ctrl+Shift+A')}) toont alle "
         "artiesten met het aantal tracks, en rechts groepen van waarschijnlijk dezelfde artiest. "
         "Pas de voorgestelde schrijfwijze aan, of haal met <b>Opzoeken op MusicBrainz</b> de "
-        "officiële naam op, en kies <b>Toepassen op cluster</b>."
+        "officiële naam op, en kies <b>Toepassen op cluster</b>. Onder elke schrijfwijze staan de "
+        "tracks zelf: vink een track uit om hem ongemoeid te laten, druk op Enter om hem af te "
+        "spelen, of kies via rechtsklik <b>Toon in hoofdvenster</b>. De tooltip toont het pad."
     ),
     figure(
         "14_artiesten_overzicht",

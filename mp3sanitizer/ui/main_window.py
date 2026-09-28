@@ -595,11 +595,26 @@ class MainWindow(QMainWindow):
             articles=self._settings.articles,
             query="" if overview else self._current_artist(),
             parent=self,
+            play=self.play_track,
+            show_track=self.show_track,
         )
         if overview:
             dialog.tabs.setCurrentIndex(1)
         dialog.exec()
         self._settings.fuzzy_threshold = dialog.threshold_slider.value()
+
+    def show_track(self, track_id: int) -> None:
+        """Selecteer een track in de tabel (filter en zoekterm worden zo nodig gewist)."""
+        index = self.proxy.mapFromSource(self.model.index(self.model.row_of(track_id), 0))
+        if not index.isValid():
+            self.search_edit.clear()
+            self._apply_search()
+            self.set_quick_filter(QuickFilter.ALL)
+            index = self.proxy.mapFromSource(self.model.index(self.model.row_of(track_id), 0))
+        if index.isValid():
+            self.table.selectRow(index.row())
+            self.table.scrollTo(index, QAbstractItemView.ScrollHint.PositionAtCenter)
+            self._flash(f"Getoond: {self.model.track_label(track_id)}")
 
     def lookup_musicbrainz(self) -> None:
         ids = self.selected_track_ids()

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QSlider,
     QSplitter,
@@ -175,9 +176,13 @@ class ArtistDialog(QDialog):
         articles: Sequence[str] = DEFAULT_ARTICLES,
         query: str = "",
         parent: QWidget | None = None,
+        play: Callable[[int], None] | None = None,
+        show_track: Callable[[int], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Artiesten zoeken en corrigeren")
+        self._play = play  # track afspelen (Enter in de voorstellen)
+        self._show_track = show_track  # track tonen in het hoofdvenster
         self.resize(1100, 680)
         self.model = model
         self._pool = pool
@@ -265,6 +270,9 @@ class ArtistDialog(QDialog):
         self.clusters.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.clusters.currentItemChanged.connect(self._on_cluster_selected)
         self.clusters.itemChanged.connect(lambda *_: self._update_cluster_button())
+        self.clusters.itemActivated.connect(self._on_cluster_activated)
+        self.clusters.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.clusters.customContextMenuRequested.connect(self._cluster_menu)
         self.cluster_status = QLabel(tab)
         self.cluster_edit = QLineEdit(tab)
         self.cluster_edit.setPlaceholderText("Schrijfwijze voor dit cluster")
@@ -459,9 +467,20 @@ class ArtistDialog(QDialog):
             top.setData(0, SPELLING_ROLE, c.suggestion)
             for spelling, n in c.members:
                 child = QTreeWidgetItem([spelling, str(n)])
-                child.setFlags(_CHECKABLE)
-                child.setCheckState(0, Qt.CheckState.Checked)
+                child.setFlags(_CHECKABLE | Qt.ItemFlag.ItemIsAutoTristate)
                 child.setData(0, SPELLING_ROLE, spelling)
+                # Derde niveau: de tracks zelf, voor context en om per track te kiezen.
+                for tid in self._index.get(spelling, []):
+                    track = QTreeWidgetItem([self.model.track_label(tid), ""])
+                    track.setFlags(_CHECKABLE)
+                    track.setCheckState(0, Qt.CheckState.Checked)
+                    track.setData(0, SPELLING_ROLE, spelling)
+                    track.setData(0, TRACK_ID_ROLE, tid)
+                    path = str(self.model.tracks[tid].path)
+                    track.setToolTip(0, f"{path}\nEnter: afspelen · rechtsklik: meer")
+                    child.addChild(track)
+                if not child.childCount():
+                    child.setCheckState(0, Qt.CheckState.Checked)
                 top.addChild(child)
             self.clusters.addTopLevelItem(top)
         self.clusters.blockSignals(False)
@@ -475,13 +494,19 @@ class ArtistDialog(QDialog):
     def _on_cluster_selected(self, current: QTreeWidgetItem | None, _prev: object) -> None:
         if current is None:
             return
-        top = current.parent() or current
+        top = self._root(current)
         self.cluster_edit.setText(top.data(0, SPELLING_ROLE))
         self._update_cluster_button()
 
     def _current_cluster(self) -> QTreeWidgetItem | None:
         item = self.clusters.currentItem()
-        return (item.parent() or item) if item else None
+        return self._root(item) if item else None
+
+    @staticmethod
+    def _root(item: QTreeWidgetItem) -> QTreeWidgetItem:
+        while item.parent() is not None:
+            item = item.parent()
+        return item
 
     def cluster_pairs(self) -> list[tuple[int, str]]:
         top = self._current_cluster()
@@ -490,10 +515,32 @@ class ArtistDialog(QDialog):
         pairs: list[tuple[int, str]] = []
         for j in range(top.childCount()):
             child = top.child(j)
-            if child.checkState(0) == Qt.CheckState.Checked:
-                spelling = child.data(0, SPELLING_ROLE)
-                pairs.extend((tid, spelling) for tid in self._index.get(spelling, []))
+            spelling = child.data(0, SPELLING_ROLE)
+            for k in range(child.childCount()):  # per aangevinkte track
+                track = child.child(k)
+                if track.checkState(0) == Qt.CheckState.Checked:
+                    pairs.append((track.data(0, TRACK_ID_ROLE), spelling))
         return self._prefer_parts(pairs)
+
+    # --- tracks in de voorstellen: afspelen en tonen -------------------------------------
+    def _on_cluster_activated(self, item: QTreeWidgetItem, _column: int) -> None:
+        tid = item.data(0, TRACK_ID_ROLE)
+        if tid is not None and self._play is not None:
+            self._play(tid)
+
+    def _cluster_menu(self, pos) -> None:
+        item = self.clusters.itemAt(pos)
+        tid = item.data(0, TRACK_ID_ROLE) if item else None
+        if tid is None:
+            return
+        menu = QMenu(self)
+        play = menu.addAction("&Afspelen")
+        play.setEnabled(self._play is not None)
+        play.triggered.connect(lambda: self._play(tid) if self._play else None)
+        show = menu.addAction("&Toon in hoofdvenster")
+        show.setEnabled(self._show_track is not None)
+        show.triggered.connect(lambda: self._show_track(tid) if self._show_track else None)
+        menu.exec(self.clusters.viewport().mapToGlobal(pos))
 
     def cluster_track_ids(self) -> list[int]:
         return list(dict.fromkeys(tid for tid, _ in self.cluster_pairs()))
