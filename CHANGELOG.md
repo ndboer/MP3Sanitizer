@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.10.6] - 2026-09-28
+
 ### Added
 - Artiestenvoorstellen tonen onder elke schrijfwijze de tracks: per track uit te vinken,
   Enter speelt af, tooltip met het pad, rechtsklik → Toon in hoofdvenster.
