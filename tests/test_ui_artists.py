@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QLineEdit
 from mp3sanitizer.core.musicbrainz import ArtistCandidate, MusicBrainzError
 from mp3sanitizer.core.scanner import track_from_path
 from mp3sanitizer.ui import main_window as main_window_module
-from mp3sanitizer.ui.artist_search import ArtistDialog, MusicBrainzDialog
+from mp3sanitizer.ui.artist_search import TRACK_ID_ROLE, ArtistDialog, MusicBrainzDialog
 from mp3sanitizer.ui.track_model import TrackTableModel
 
 NAMES = [
@@ -333,3 +333,62 @@ def test_cluster_musicbrainz_fills_official_name(model, pool, monkeypatch):
     assert d.cluster_edit.text() == "The Beatles"  # officiële naam, niet de sort-name
     d.apply_cluster()
     assert model.edits.artist(2) == "The Beatles"
+
+
+def _queen_cluster(d):
+    wait_for(lambda: d.clusters.topLevelItemCount() > 0)
+    for i in range(d.clusters.topLevelItemCount()):
+        top = d.clusters.topLevelItem(i)
+        names = {top.child(j).text(0) for j in range(top.childCount())}
+        if {"queen", "Queen"} <= names:
+            return top
+    raise AssertionError("geen queen-cluster")
+
+
+def test_cluster_shows_tracks_and_allows_per_track_choice(collab_model, pool):
+    played = []
+    d = ArtistDialog(collab_model, pool, lambda: FakeMB(), query="", play=played.append)
+    top = _queen_cluster(d)
+    d.clusters.setCurrentItem(top)
+    lower = next(top.child(j) for j in range(top.childCount()) if top.child(j).text(0) == "queen")
+    tracks = [lower.child(k) for k in range(lower.childCount())]
+    labels = {t.text(0) for t in tracks}
+    assert "queen & David Bowie - Under Pressure (1981)" in labels
+    assert "Innuendo" in " ".join(labels)
+    assert all(
+        str(collab_model.tracks[t.data(0, TRACK_ID_ROLE)].path) in t.toolTip(0) for t in tracks
+    )
+    # Enter / dubbelklik op een track speelt af
+    d.clusters.itemActivated.emit(tracks[0], 0)
+    assert played == [tracks[0].data(0, TRACK_ID_ROLE)]
+    # één track uitvinken: die blijft ongewijzigd
+    skip = next(t for t in tracks if "Live Pressure" in t.text(0))
+    skip.setCheckState(0, Qt.CheckState.Unchecked)
+    assert lower.checkState(0) == Qt.CheckState.PartiallyChecked
+    d.cluster_edit.setText("Queen")
+    d.apply_cluster()
+    assert collab_model.edits.artist(0) == "Queen"
+    assert collab_model.edits.artist(1) == "Queen & David Bowie"
+    assert collab_model.edits.artist(2) == "David Bowie & queen"  # uitgevinkt
+
+
+def test_show_track_in_main_window_clears_filter(qapp, tmp_path):
+    from mp3sanitizer.core.journal import JournalStore
+    from mp3sanitizer.core.settings import SettingsStore
+    from mp3sanitizer.ui.main_window import MainWindow
+    from mp3sanitizer.ui.proxy_model import QuickFilter
+
+    music = tmp_path / "m"
+    music.mkdir()
+    for n in COLLAB:
+        (music / n).write_bytes(b"")
+    w = MainWindow(SettingsStore.load(tmp_path / "c"), QThreadPool(), JournalStore(tmp_path / "j"))
+    w.start_scan(music)
+    wait_for(lambda: not w.busy)
+    w.set_quick_filter(QuickFilter.PARSE_ERRORS)  # verbergt alles
+    tid = next(t.id for t in w.model.tracks if "Under Pressure" in t.filename)
+    w.show_track(tid)
+    assert w.proxy.quick_filter is QuickFilter.ALL
+    rows = w.table.selectionModel().selectedRows()
+    assert [w.model.track_id(w.proxy.mapToSource(r).row()) for r in rows] == [tid]
+    w.close()
