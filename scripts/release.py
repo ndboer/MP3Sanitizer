@@ -186,8 +186,22 @@ def build(expected_version: str | None = None, dry: bool = False) -> Path:
     run("uv", "run", "pyinstaller", "mp3sanitizer.spec", "--noconfirm", "--log-level", "WARN")
     smoke = DIST / "smoke-test.txt"
     smoke.unlink(missing_ok=True)
-    subprocess.run([str(EXE), "--smoke-test", str(smoke)], cwd=ROOT, timeout=120, check=True)
-    report = smoke.read_text(encoding="utf-8")
+    try:
+        proc = subprocess.run(
+            [str(EXE), "--smoke-test", str(smoke)],
+            cwd=ROOT,
+            timeout=120,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ReleaseError("Smoke-test van de exe duurde langer dan 120 s") from exc
+    report = smoke.read_text(encoding="utf-8") if smoke.exists() else ""
+    if proc.returncode != 0:
+        raise ReleaseError(
+            f"Smoke-test van de exe mislukt ({proc.returncode}):\n"
+            f"{report}\n{proc.stdout}\n{proc.stderr}"
+        )
     first = report.splitlines()[0]
     if first != f"Mp3Sanitizer {version}" or not report.rstrip().endswith("OK"):
         raise ReleaseError(f"Smoke-test van de exe mislukt:\n{report}")
@@ -222,7 +236,12 @@ def build_manual(version: str | None = None) -> Path:
         if os.environ.get("CI")
         else None
     )
-    run("uv", "run", "python", "docs/manual/screenshots.py", str(shots), timeout=600, env=env)
+    try:
+        run("uv", "run", "python", "docs/manual/screenshots.py", str(shots), timeout=600, env=env)
+    except ReleaseError as exc:  # één herkansing: de CI-runner is soms traag of wispelturig
+        print(f"   screenshots mislukt, opnieuw: {exc}")
+        shutil.rmtree(shots, ignore_errors=True)
+        run("uv", "run", "python", "docs/manual/screenshots.py", str(shots), timeout=600, env=env)
     run(
         "uv",
         "run",
@@ -279,6 +298,9 @@ def main(argv: list[str] | None = None) -> int:
             print(changelog_section(CHANGELOG.read_text(encoding="utf-8"), args.version))
     except ReleaseError as exc:
         print(f"\nFOUT: {exc}", file=sys.stderr)
+        if os.environ.get("GITHUB_ACTIONS"):  # zichtbaar als annotatie, ook zonder inloggen
+            detail = str(exc).replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+            print(f"::error title=release.py::{detail[-4000:]}")
         return 1
     return 0
 
