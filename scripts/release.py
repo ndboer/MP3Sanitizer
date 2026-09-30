@@ -26,6 +26,7 @@ import re
 import shutil
 import subprocess
 import sys
+import traceback
 from datetime import date
 from pathlib import Path
 
@@ -296,11 +297,12 @@ def main(argv: list[str] | None = None) -> int:
             build_manual(args.version)
         else:
             print(changelog_section(CHANGELOG.read_text(encoding="utf-8"), args.version))
-    except ReleaseError as exc:
-        print(f"\nFOUT: {exc}", file=sys.stderr)
+    except Exception as exc:  # ook onverwachte fouten melden, met traceback
+        message = str(exc) if isinstance(exc, ReleaseError) else traceback.format_exc()
+        print(f"\nFOUT: {message}", file=sys.stderr)
         if os.environ.get("GITHUB_ACTIONS"):  # zichtbaar als annotatie, ook zonder inloggen
-            detail = str(exc).replace("%", "%25").replace("\r", "").replace("\n", "%0A")
-            print(f"::error title=release.py::{detail[-4000:]}")
+            detail = message.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+            print(f"::error title=release.py::{detail[-4000:]}", flush=True)
         return 1
     return 0
 

@@ -44,8 +44,13 @@ jobs:
         run: |
           $version = "${{ github.ref_name }}".TrimStart("v")
           # Elke stap controleren: in PowerShell telt anders alleen het laatste commando.
+          # De Windows-runner faalt af en toe zonder duidelijke reden: één herkansing.
           uv run python scripts/release.py build --version $version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "::warning::Build mislukt (exit $LASTEXITCODE), tweede poging"
+            uv run python scripts/release.py build --version $version
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
           if (-not (Test-Path "dist/Mp3Sanitizer-handleiding-$version.pdf")) { throw "Handleiding ontbreekt" }
           uv run python scripts/release.py notes $version | Out-File -Encoding utf8 release-notes.md
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
