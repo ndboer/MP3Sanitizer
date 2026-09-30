@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-09-30
+
 ### Fixed
 - Release-build op de CI: ook onverwachte fouten verschijnen als annotatie en de build krijgt
   één herkansing. 0.11.0 is daardoor niet als GitHub-release verschenen; deze versie bevat
