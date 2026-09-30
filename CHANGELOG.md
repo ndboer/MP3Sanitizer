@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-30
+
 ### Added
 - Rechtsklik → **Opzoeken op MusicBrainz (artiest + titel)**: zoekt de track op en neemt de
   officiële titel, artiest en/of het jaar over (één undo-stap). Alleen de artiest opzoeken
