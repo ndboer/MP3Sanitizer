@@ -355,6 +355,14 @@ class PreviewDialog(QDialog):
         if self.proxy.rowCount():
             self.table.setCurrentIndex(self.proxy.index(0, PCol.CHECK))
 
+    def selected_keys(self) -> list[Hashable]:
+        """Sleutels van de geselecteerde regels (of de huidige regel), in weergavevolgorde."""
+        rows = sorted(i.row() for i in self.table.selectionModel().selectedRows())
+        if not rows and self.table.currentIndex().isValid():
+            rows = [self.table.currentIndex().row()]
+        items = self.model.items
+        return [items[self.proxy.mapToSource(self.proxy.index(r, 0)).row()].key for r in rows]
+
     def checked_keys(self) -> list[Hashable]:
         return [i.key for i in self.model.items if i.checkable and i.checked]
 

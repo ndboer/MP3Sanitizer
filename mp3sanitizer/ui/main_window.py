@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 
 from mp3sanitizer import __version__
 from mp3sanitizer.core.artists import artist_names, is_collaboration, replace_artist
-from mp3sanitizer.core.deleter import DeleteItem, DeleteResult, Trash
+from mp3sanitizer.core.deleter import DeleteItem, DeleteResult, Trash, delete_files
 from mp3sanitizer.core.duplicates import DupItem, DupOptions, find_duplicates
 from mp3sanitizer.core.executor import ExecResult
 from mp3sanitizer.core.export import export_csv
@@ -66,6 +66,7 @@ from mp3sanitizer.ui.delete_dialog import DeleteDialog
 from mp3sanitizer.ui.duplicates_view import DuplicatesDialog
 from mp3sanitizer.ui.player import SEEK_STEP_MS, MiniPlayer, Player, next_in_selection
 from mp3sanitizer.ui.proxy_model import QuickFilter, TrackFilterProxy
+from mp3sanitizer.ui.recording_dialog import RecordingDialog
 from mp3sanitizer.ui.rule_editor import RuleEditorDialog
 from mp3sanitizer.ui.save_dialog import SavePreviewDialog, relative
 from mp3sanitizer.ui.track_model import FIELD_COLUMN, Col, TrackTableModel
@@ -289,8 +290,11 @@ class MainWindow(QMainWindow):
         self.act_duplicates = QAction("&Duplicaten zoeken…", self)
         self.act_duplicates.setShortcut(QKeySequence("Ctrl+D"))
         self.act_duplicates.triggered.connect(self.open_duplicates)
-        self.act_mb = QAction("Opzoeken op &MusicBrainz…", self)
-        self.act_mb.triggered.connect(self.lookup_musicbrainz)
+        self.act_mb = QAction("Opzoeken op &MusicBrainz (artiest + titel)…", self)
+        self.act_mb.setToolTip("Officiële titel, artiest en jaar van deze track opzoeken")
+        self.act_mb.triggered.connect(self.lookup_recording)
+        self.act_mb_artist = QAction("Alleen a&rtiest opzoeken op MusicBrainz…", self)
+        self.act_mb_artist.triggered.connect(self.lookup_musicbrainz)
         self.act_delete = QAction("&Verwijderen…", self, shortcut=QKeySequence.StandardKey.Delete)
         self.act_delete.setToolTip("Geselecteerde bestanden naar de Prullenbak (Del)")
         # Alleen als de tabel zelf de focus heeft: in een editor wist Del gewoon tekens.
@@ -645,6 +649,33 @@ class MainWindow(QMainWindow):
                 message += f"; {skipped} samenwerkingen zonder “{query}” overgeslagen"
             self._flash(message, 8000)
 
+    def lookup_recording(self) -> None:
+        """Zoek de huidige track op artiest + titel en neem titel/artiest/jaar over."""
+        ids = self.selected_track_ids()
+        if not ids:
+            return
+        index = self.table.currentIndex()
+        tid = self.model.track_id(self.proxy.mapToSource(index).row()) if index.isValid() else -1
+        tid = tid if tid in ids else ids[0]
+        e = self.model.edits
+        dialog = RecordingDialog(
+            self.mb_client_factory(), e.artist(tid), e.title(tid), self._pool, self
+        )
+        if not dialog.exec():
+            return
+        values = dialog.values()
+        fields = {"artist": Field.ARTIST, "title": Field.TITLE, "year": Field.YEAR}
+        changes = [
+            c
+            for key, value in values.items()
+            if (c := e.change(tid, fields[key], value, "musicbrainz")) is not None
+        ]
+        label = self.model.track_label(tid)
+        if self.model.push_changes(changes, f"MusicBrainz: {label}"):
+            self._flash(f"Overgenomen van MusicBrainz: {label}", 6000)
+        else:
+            self._flash("Niets gewijzigd: de track komt al overeen met MusicBrainz", 6000)
+
     # --- help / updates ------------------------------------------------------------------
     def show_about(self) -> None:
         AboutDialog(self).exec()
@@ -977,6 +1008,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction(self.act_play)
         menu.addAction(self.act_mb)
+        menu.addAction(self.act_mb_artist)
         menu.addAction(self.act_reveal)
         menu.addSeparator()
         menu.addAction(self.act_delete)
@@ -1207,7 +1239,7 @@ class MainWindow(QMainWindow):
     def save_changes(self) -> None:
         if self._root is None or not self._ensure_idle():
             return
-        dialog = SavePreviewDialog(self.plan_inputs(), self._root, self._settings, self)
+        dialog = SavePreviewDialog(self.plan_inputs(), self._root, self._settings, self, fixer=self)
         if not dialog.exec():
             return
         dialog.store_settings(self._settings)
@@ -1222,6 +1254,36 @@ class MainWindow(QMainWindow):
         self.stop_playback()
         worker = SaveWorker(plans, self.journals, self._root, __version__, cleanup_empty_dirs)
         self._start_batch(worker, f"Opslaan ({len(plans)})…", len(plans))
+
+    # --- herstellen vanuit de opslaan-preview (SaveFixer) ----------------------------------
+    def set_track_values(
+        self, track_id: int, artist: str, title: str, year: int | None, text: str
+    ) -> bool:
+        """Zet artiest, titel en jaar van één track als één undo-stap."""
+        e = self.model.edits
+        values = ((Field.ARTIST, artist), (Field.TITLE, title), (Field.YEAR, year))
+        changes = [c for f, v in values if (c := e.change(track_id, f, v, "manual")) is not None]
+        return self.model.push_changes(changes, f"{text}: {self.model.track_label(track_id)}")
+
+    def delete_tracks_now(self, track_ids: list[int], parent: QWidget) -> bool:
+        """Verwijder tracks direct (na bevestiging); voor enkele duplicaten in de preview."""
+        assert self._root is not None
+        root = self._root
+        confirm = DeleteDialog(
+            [relative(self.model.tracks[i].path, root) for i in track_ids], parent
+        )
+        if not confirm.exec():
+            return False
+        if self.player.current_track in track_ids:
+            self.stop_playback()
+        items = [DeleteItem(i, self.model.tracks[i].path) for i in track_ids]
+        kwargs = {"trash": self.trash_function} if self.trash_function is not None else {}
+        result, _journal = delete_files(
+            items, self.journals, root, __version__, permanent=confirm.is_permanent, **kwargs
+        )
+        self.model.mark_deleted(result.deleted)
+        self.report_delete(result, confirm.is_permanent)
+        return bool(result.deleted)
 
     def undo_last_batch(self) -> None:
         if not self._ensure_idle():

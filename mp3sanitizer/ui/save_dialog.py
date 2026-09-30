@@ -5,14 +5,21 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Protocol
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
+    QPushButton,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -25,7 +32,15 @@ from mp3sanitizer.core.planner import (
     plan_renames,
 )
 from mp3sanitizer.core.settings import Settings
+from mp3sanitizer.core.validate import (
+    YearError,
+    invalid_chars,
+    parse_year_input,
+    sanitize_text,
+    text_issues,
+)
 from mp3sanitizer.ui.preview_dialog import Level, PreviewDialog, PreviewItem
+from mp3sanitizer.ui.track_model import ERROR_COLOR
 
 _TEMPLATES = [
     (FolderTemplate.NONE, "Niet verplaatsen"),
@@ -70,6 +85,88 @@ def plan_to_item(plan: RenamePlan, root: Path) -> PreviewItem:
     )
 
 
+class SaveFixer(Protocol):
+    """Wat de opslaan-preview nodig heeft om niet-opslaanbare tracks te herstellen."""
+
+    def plan_inputs(self) -> list[PlanInput]: ...
+
+    def set_track_values(
+        self, track_id: int, artist: str, title: str, year: int | None, text: str
+    ) -> bool: ...
+
+    def delete_tracks_now(self, track_ids: list[int], parent: QWidget) -> bool: ...
+
+
+class TrackEditDialog(QDialog):
+    """Artiest, titel en jaar van één track aanpassen, met directe controle op geldigheid."""
+
+    def __init__(
+        self, artist: str, title: str, year: int | None, parent: QWidget | None = None
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Track aanpassen")
+        self.resize(560, 0)
+        self.artist_edit = QLineEdit(artist, self)
+        self.title_edit = QLineEdit(title, self)
+        self.year_edit = QLineEdit("" if year is None else str(year), self)
+        self.year_edit.setMaximumWidth(80)
+        self.fix_button = QPushButton("Ongeldige tekens &vervangen", self)
+        self.fix_button.clicked.connect(self.sanitize)
+        self.status = QLabel(self)
+        self.status.setWordWrap(True)
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self
+        )
+        self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Annuleren")
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        form = QFormLayout()
+        form.addRow("&Artiest:", self.artist_edit)
+        form.addRow("&Titel:", self.title_edit)
+        form.addRow("&Jaar:", self.year_edit)
+        row = QHBoxLayout()
+        row.addWidget(self.fix_button)
+        row.addStretch(1)
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addLayout(row)
+        layout.addWidget(self.status)
+        layout.addWidget(self.buttons)
+        for edit in (self.artist_edit, self.title_edit, self.year_edit):
+            edit.textChanged.connect(self.validate)
+        self.validate()
+
+    def sanitize(self) -> None:
+        for edit in (self.artist_edit, self.title_edit):
+            edit.setText(sanitize_text(edit.text()))
+
+    def problems(self) -> list[str]:
+        problems = []
+        for name, edit in (("Artiest", self.artist_edit), ("Titel", self.title_edit)):
+            problems += [f"{name}: {issue.message.lower()}" for issue in text_issues(edit.text())]
+        try:
+            parse_year_input(self.year_edit.text())
+        except YearError as exc:
+            problems.append(f"Jaar: {exc}")
+        return problems
+
+    def validate(self) -> None:
+        problems = self.problems()
+        self.status.setStyleSheet(f"color: {ERROR_COLOR.name()}" if problems else "")
+        self.status.setText("\n".join(problems) or "De naam is geldig.")
+        self.fix_button.setEnabled(
+            any(invalid_chars(e.text()) for e in (self.artist_edit, self.title_edit))
+        )
+        self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(not problems)
+
+    def values(self) -> tuple[str, str, int | None]:
+        return (
+            " ".join(self.artist_edit.text().split()),
+            " ".join(self.title_edit.text().split()),
+            parse_year_input(self.year_edit.text()),
+        )
+
+
 class SavePreviewDialog(PreviewDialog):
     def __init__(
         self,
@@ -78,6 +175,7 @@ class SavePreviewDialog(PreviewDialog):
         settings: Settings,
         parent: QWidget | None = None,
         exists: Callable[[Path], bool] = os.path.exists,
+        fixer: SaveFixer | None = None,
     ) -> None:
         super().__init__(
             "Opslaan: hernoemen en verplaatsen",
@@ -90,6 +188,7 @@ class SavePreviewDialog(PreviewDialog):
         self._inputs = list(inputs)
         self._root = root
         self._exists = exists
+        self._fixer = fixer
         self.plans: dict[int, RenamePlan] = {}
 
         self.template_combo = QComboBox(self)
@@ -129,6 +228,39 @@ class SavePreviewDialog(PreviewDialog):
         form.addRow("", self.cleanup)
         self.options_layout.addLayout(form)
 
+        # Herstellen van tracks die niet opgeslagen kunnen worden (ongeldig of botsing).
+        self.fix_label = QLabel(self)
+        self.edit_button = QPushButton("&Aanpassen…", self)
+        self.edit_button.setToolTip("Artiest, titel en jaar van de geselecteerde track aanpassen")
+        self.edit_button.clicked.connect(self.edit_selected)
+        self.sanitize_button = QPushButton("Ongeldige &tekens vervangen", self)
+        self.sanitize_button.setToolTip('Bijv. "AC/DC" wordt "AC-DC", "Deel: 2" wordt "Deel - 2"')
+        self.sanitize_button.clicked.connect(self.sanitize_selected)
+        self.delete_button = QPushButton("&Verwijderen (duplicaat)…", self)
+        self.delete_button.setToolTip(
+            "Het bronbestand verwijderen, bijvoorbeeld als het doelbestand al bestaat (duplicaat)"
+        )
+        self.delete_button.clicked.connect(self.delete_selected)
+        self._fix_widgets = (
+            self.fix_label,
+            self.edit_button,
+            self.sanitize_button,
+            self.delete_button,
+        )
+        if fixer is not None:
+            fix_row = QHBoxLayout()
+            for widget in self._fix_widgets:
+                fix_row.addWidget(widget)
+            fix_row.addStretch(1)
+            self.options_layout.addLayout(fix_row)
+            self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            self.table.customContextMenuRequested.connect(self._context_menu)
+            self.table.selectionModel().selectionChanged.connect(self._update_fix_buttons)
+            self.table.selectionModel().currentChanged.connect(self._update_fix_buttons)
+        else:
+            for widget in self._fix_widgets:
+                widget.hide()
+
         for combo in (self.template_combo, self.style_combo, self.collision_combo):
             combo.currentIndexChanged.connect(self.replan)
         for box in (self.include_unchanged, self.write_tags):
@@ -159,6 +291,78 @@ class SavePreviewDialog(PreviewDialog):
         plans = plan_renames(self._inputs, opts, self._exists)
         self.plans = {p.track_id: p for p in plans}
         self.set_items(plan_to_item(p, self._root) for p in plans)
+        if hasattr(self, "_fix_widgets"):  # replan draait al tijdens __init__
+            self._update_fix_buttons()
+
+    # --- herstellen ----------------------------------------------------------------------
+    def _selected_ids(self) -> list[int]:
+        return [k for k in self.selected_keys() if isinstance(k, int) and k in self.plans]
+
+    def _inputs_by_id(self) -> dict[int, PlanInput]:
+        return {i.track_id: i for i in self._inputs}
+
+    def _update_fix_buttons(self, *_args: object) -> None:
+        blocked = sum(1 for p in self.plans.values() if p.blocked)
+        self.fix_label.setText(
+            f"{blocked} niet op te slaan. Geselecteerde track:"
+            if blocked
+            else "Geselecteerde track:"
+        )
+        ids = self._selected_ids()
+        inputs = self._inputs_by_id()
+        self.edit_button.setEnabled(len(ids) == 1)
+        self.sanitize_button.setEnabled(
+            any(invalid_chars(inputs[i].artist + inputs[i].title) for i in ids if i in inputs)
+        )
+        self.delete_button.setEnabled(bool(ids))
+
+    def _refresh(self) -> None:
+        assert self._fixer is not None
+        self._inputs = list(self._fixer.plan_inputs())
+        self.replan()
+
+    def edit_selected(self) -> None:
+        ids = self._selected_ids()
+        inp = self._inputs_by_id().get(ids[0]) if len(ids) == 1 else None
+        if inp is None or self._fixer is None:
+            return
+        dialog = TrackEditDialog(inp.artist, inp.title, inp.year, self)
+        if not dialog.exec():
+            return
+        artist, title, year = dialog.values()
+        if self._fixer.set_track_values(inp.track_id, artist, title, year, "Track aanpassen"):
+            self._refresh()
+
+    def sanitize_selected(self) -> None:
+        if self._fixer is None:
+            return
+        inputs, changed = self._inputs_by_id(), False
+        for tid in self._selected_ids():
+            inp = inputs.get(tid)
+            if inp is None:
+                continue
+            artist, title = sanitize_text(inp.artist), sanitize_text(inp.title)
+            if (artist, title) != (inp.artist, inp.title):
+                changed |= self._fixer.set_track_values(
+                    tid, artist, title, inp.year, "Ongeldige tekens vervangen"
+                )
+        if changed:
+            self._refresh()
+
+    def delete_selected(self) -> None:
+        ids = self._selected_ids()
+        if ids and self._fixer is not None and self._fixer.delete_tracks_now(ids, self):
+            self._refresh()
+
+    def _context_menu(self, pos) -> None:
+        if not self.table.indexAt(pos).isValid():
+            return
+        menu = QMenu(self)
+        for button in (self.edit_button, self.sanitize_button, self.delete_button):
+            action = menu.addAction(button.text().replace("&", ""))
+            action.setEnabled(button.isEnabled())
+            action.triggered.connect(button.click)
+        menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def summary_text(self) -> str:
         known = getattr(self, "plans", {})  # wordt al vanuit PreviewDialog.__init__ aangeroepen

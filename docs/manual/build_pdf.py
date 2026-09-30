@@ -633,6 +633,15 @@ story += [
         "De app doet maximaal één verzoek per seconde (zoals MusicBrainz vraagt) en onthoudt "
         "de resultaten 30 dagen, dus dezelfde vraag is de volgende keer direct beantwoord."
     ),
+    h2("Track opzoeken (artiest + titel)"),
+    p(
+        "Rechtsklik op een track en kies <b>Opzoeken op MusicBrainz (artiest + titel)</b> om de "
+        "officiële schrijfwijze van de titel te controleren. Je ziet titel, artiest, jaar van de "
+        "eerste release, duur, release en score; vergelijk de duur om de juiste versie te kiezen. "
+        "Vink aan wat je wilt overnemen: <b>Titel</b> (standaard), <b>Artiest</b> en/of "
+        "<b>Jaar</b>, en kies <b>Overnemen</b>. Alleen de artiest opzoeken kan nog via "
+        "<b>Alleen artiest opzoeken op MusicBrainz</b>."
+    ),
     PageBreak(),
 ]
 
@@ -857,6 +866,22 @@ story += [
             f"{code('a.mp3')} en {code('A.mp3')} als hetzelfde bestand).",
             "<b>Pad langer dan 259 tekens</b>: kan problemen geven in oudere programma's.",
             "<b>Ongeldige naam</b>: niet aan te vinken; corrigeer eerst de artiest of titel.",
+        ]
+    ),
+    h2("Niet-opslaanbare tracks herstellen"),
+    p(
+        "Selecteer in de preview een track en gebruik de knoppen onder de opties (ook via "
+        "rechtsklik). De preview rekent daarna direct opnieuw; elke aanpassing is met "
+        f"{kbd('Ctrl+Z')} ongedaan te maken."
+    ),
+    *bullets(
+        [
+            "<b>Aanpassen…</b>: artiest, titel en jaar van één track wijzigen; de naam wordt "
+            "direct gecontroleerd.",
+            "<b>Ongeldige tekens vervangen</b>: bijvoorbeeld “AC/DC” wordt “AC-DC”, "
+            "“Titel: deel 2” wordt “Titel - deel 2” en “Why?” wordt “Why”.",
+            "<b>Verwijderen (duplicaat)…</b>: bestaat het doelbestand al, dan is de track "
+            "vaak een duplicaat. Na bevestiging gaat het bronbestand naar de Prullenbak.",
         ]
     ),
     h2("Na het opslaan"),

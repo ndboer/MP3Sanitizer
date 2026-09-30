@@ -39,6 +39,30 @@ def invalid_chars(text: str) -> set[str]:
     return found
 
 
+def sanitize_text(text: str) -> str:
+    """Vervang tekens die Windows niet toestaat door leesbare alternatieven.
+
+    'Artiest: Titel' wordt 'Artiest - Titel', 'AC/DC' wordt 'AC-DC', 'Why?' wordt 'Why'.
+    """
+    text = _CONTROL.sub("", text)
+    text = re.sub(r"\s*:\s+", " - ", text)
+    text = "".join(_REPLACEMENTS.get(ch, ch) for ch in text)
+    return " ".join(text.split())
+
+
+_REPLACEMENTS = {
+    ":": "-",
+    "/": "-",
+    "\\": "-",
+    "|": "-",
+    "?": "",
+    "*": "",
+    '"': "'",
+    "<": "(",
+    ">": ")",
+}
+
+
 def is_reserved_name(text: str) -> bool:
     """Windows weigert o.a. 'CON', 'con.txt' en 'NUL ' als bestandsnaam."""
     stem = text.split(".", 1)[0].strip().upper()

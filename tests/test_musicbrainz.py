@@ -12,7 +12,9 @@ from mp3sanitizer.core.musicbrainz import (
     MusicBrainzClient,
     MusicBrainzError,
     RateLimiter,
+    RecordingCandidate,
     lucene_escape,
+    recording_key,
     user_agent,
 )
 
@@ -165,3 +167,65 @@ def test_empty_query_makes_no_request(requests_log):
 
 def test_lucene_escape():
     assert lucene_escape('AC/DC: "Live"!') == 'AC\\/DC\\: \\"Live\\"\\!'
+
+
+# --- opnamen (artiest + titel) ---------------------------------------------------------------
+
+RECORDING_RESPONSE = {
+    "recordings": [
+        {
+            "id": "r1",
+            "title": "Under Pressure",
+            "score": 100,
+            "length": 248000,
+            "first-release-date": "1981-10-26",
+            "artist-credit": [
+                {"name": "Queen", "joinphrase": " & ", "artist": {"name": "Queen"}},
+                {"name": "David Bowie", "artist": {"name": "David Bowie"}},
+            ],
+            "releases": [{"title": "Under Pressure"}],
+        },
+        {"id": "r2", "title": "Under Pressure (live)", "score": 90, "disambiguation": "live"},
+        {"id": "r3", "title": "Pressure", "score": 50},
+    ]
+}
+
+
+def test_search_recording_parses_credit_year_and_query(requests_log):
+    client = _client(requests_log, [httpx.Response(200, json=RECORDING_RESPONSE)])
+    result = client.search_recording("queen", "under pressure")
+    assert [r.mbid for r in result] == ["r1", "r2"]  # score < 80 valt af
+    first = result[0]
+    assert (first.title, first.artist, first.year) == (
+        "Under Pressure",
+        "Queen & David Bowie",
+        1981,
+    )
+    assert (first.release, first.length_s) == ("Under Pressure", 248)
+    assert result[1].year is None and result[1].artist == ""
+    request = requests_log[0]
+    assert request.url.path == "/ws/2/recording/"
+    assert request.url.params["query"] == 'recording:"under pressure" AND artist:"queen"'
+
+
+def test_search_recording_without_title_makes_no_request(requests_log):
+    assert _client(requests_log).search_recording("Queen", "  ") == []
+    assert requests_log == []
+
+
+def test_recording_cache_is_separate_from_artists(tmp_path, requests_log):
+    cache = MusicBrainzCache(tmp_path / "mb.json")
+    client = _client(
+        requests_log,
+        [httpx.Response(200, json=RECORDING_RESPONSE), httpx.Response(200, json=API_RESPONSE)],
+        cache=cache,
+    )
+    client.search_recording("Queen", "Under Pressure")
+    client.search_recording("QUEEN", "under  pressure")  # uit de cache
+    assert len(requests_log) == 1
+    assert client.search_artist("Queen")[0].name == "The Beatles"  # eigen sleutel
+    assert len(requests_log) == 2
+    reloaded = MusicBrainzCache(tmp_path / "mb.json")
+    assert (
+        reloaded.get(recording_key("queen", "under pressure"), RecordingCandidate)[0].mbid == "r1"
+    )

@@ -7,6 +7,13 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Added
+- Rechtsklik → **Opzoeken op MusicBrainz (artiest + titel)**: zoekt de track op en neemt de
+  officiële titel, artiest en/of het jaar over (één undo-stap). Alleen de artiest opzoeken
+  blijft beschikbaar.
+- Opslaan-preview: niet-opslaanbare tracks herstellen met **Aanpassen…**, **Ongeldige tekens
+  vervangen** en **Verwijderen (duplicaat)…**; de preview rekent daarna direct opnieuw.
+
 ## [0.10.7] - 2026-09-28
 
 ### Fixed
