@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-30
+
 ### Changed
 - Artiest opzoeken (zoeken en corrigeren, MusicBrainz) gebruikt alleen de geselecteerde tekst
   als je in een cel tekst selecteert; enkele letters alleen als die echt geselecteerd zijn.
