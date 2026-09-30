@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-09-30
+
 ### Fixed
 - Artiesten zoeken: een korte naam die toevallig in de zoekterm voorkomt (bijv. "A" in
   "Cadets") telt niet meer als treffer met score 100. Deelovereenkomst werkt alleen nog in de
