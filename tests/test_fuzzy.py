@@ -115,3 +115,9 @@ def test_cluster_performance_2000_artists():
     t = time.perf_counter()
     cluster_artists(counts)
     assert time.perf_counter() - t < 5
+
+
+def test_short_name_inside_query_is_no_match():
+    counts = {"A": 2, "Cadets": 1, "W": 2, "Cadillacs": 1}
+    assert [m.spelling for m in search_artists("Cadets", counts, 85)] == ["Cadets"]
+    assert [m.spelling for m in search_artists("Cadets", counts, 100)] == ["Cadets"]

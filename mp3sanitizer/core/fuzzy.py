@@ -59,7 +59,9 @@ def search_artists(
         if not key:
             continue
         score = combined_score(qk, key)
-        if partial and score < threshold:
+        # Alleen de zoekterm als deel van de naam ('beat' in 'beatles'), niet andersom:
+        # anders scoort een korte naam als 'A' 100 omdat hij in 'Cadets' voorkomt.
+        if partial and score < threshold and len(key) >= len(qk):
             score = max(score, fuzz.partial_ratio(qk, key))
         if score >= threshold:
             matches.append(ArtistMatch(spelling, count, round(score, 1)))
