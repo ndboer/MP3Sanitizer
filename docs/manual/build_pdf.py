@@ -601,6 +601,10 @@ story += [
             "Opzoeken op MusicBrainz via rechtsklik zoekt bij een samenwerking op de eerste "
             "artiest en vervangt alleen die; samenwerkingen zonder die artiest worden "
             "overgeslagen.",
+            "Wil je op een andere artiest zoeken, open dan de cel (F2), selecteer de naam en "
+            "klik met rechts: <b>Artiest “…” zoeken en corrigeren</b> en <b>… opzoeken op "
+            "MusicBrainz</b> gebruiken alleen de geselecteerde tekst. Dat werkt ook met "
+            f"{kbd('Ctrl+Shift+F')} terwijl de tekst geselecteerd is.",
         ]
     ),
     h2("Overzicht en voorstellen"),

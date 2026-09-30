@@ -7,6 +7,12 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Changed
+- Artiest opzoeken (zoeken en corrigeren, MusicBrainz) gebruikt alleen de geselecteerde tekst
+  als je in een cel tekst selecteert; enkele letters alleen als die echt geselecteerd zijn.
+  Zonder selectie blijft het hele veld (of bij een samenwerking de eerste artiest) de zoekterm.
+  Rechtsklik in de cel-editor biedt beide opzoekacties met de selectie.
+
 ## [0.11.1] - 2026-09-30
 
 ### Fixed

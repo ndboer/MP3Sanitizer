@@ -19,6 +19,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QComboBox,
     QFileDialog,
     QHeaderView,
@@ -185,7 +186,9 @@ class MainWindow(QMainWindow):
     def _setup_table(self) -> None:
         t = self.table
         t.setModel(self.proxy)
-        t.setItemDelegate(TrackEditDelegate(t))
+        delegate = TrackEditDelegate(t)
+        delegate.menu_hook = self._add_editor_lookup_actions
+        t.setItemDelegate(delegate)
         t.setEditTriggers(
             QAbstractItemView.EditTrigger.DoubleClicked
             | QAbstractItemView.EditTrigger.EditKeyPressed
@@ -584,20 +587,42 @@ class MainWindow(QMainWindow):
             )
         return self._mb_client
 
+    def selected_editor_text(self) -> str:
+        """De geselecteerde tekst in een open cel-editor ('' zonder echte selectie)."""
+        widget = QApplication.focusWidget()
+        if isinstance(widget, QLineEdit) and self.table.isAncestorOf(widget):
+            return " ".join(widget.selectedText().split())
+        return ""
+
+    def _add_editor_lookup_actions(self, menu: QMenu, selected: str) -> None:
+        """Rechtsklik in een cel-editor: opzoeken met precies de geselecteerde tekst."""
+        text = " ".join(selected.split())
+        label = f"“{text}”" if len(text) <= 40 else f"“{text[:37]}…”"
+        search = menu.addAction(f"Artiest {label} zoeken en corrigeren…")
+        search.triggered.connect(lambda: self.open_artist_dialog(query=text))
+        lookup = menu.addAction(f"Artiest {label} opzoeken op MusicBrainz…")
+        lookup.triggered.connect(lambda: self.lookup_musicbrainz(query=text))
+        for action in (search, lookup):
+            action.setEnabled(bool(text))
+            if not text:
+                action.setText(action.text().replace(f"{label} ", "(selecteer tekst) "))
+
     def _current_artist(self) -> str:
         index = self.table.currentIndex()
         if not index.isValid():
             return ""
         return self.model.edits.artist(self.model.track_id(self.proxy.mapToSource(index).row()))
 
-    def open_artist_dialog(self, overview: bool = False) -> None:
+    def open_artist_dialog(self, overview: bool = False, query: str | None = None) -> None:
+        if query is None:  # geselecteerde tekst in de editor gaat voor het hele veld
+            query = "" if overview else (self.selected_editor_text() or self._current_artist())
         dialog = ArtistDialog(
             self.model,
             self._pool,
             self.mb_client_factory,
             threshold=self._settings.fuzzy_threshold,
             articles=self._settings.articles,
-            query="" if overview else self._current_artist(),
+            query=query,
             parent=self,
             play=self.play_track,
             show_track=self.show_track,
@@ -620,14 +645,16 @@ class MainWindow(QMainWindow):
             self.table.scrollTo(index, QAbstractItemView.ScrollHint.PositionAtCenter)
             self._flash(f"Getoond: {self.model.track_label(track_id)}")
 
-    def lookup_musicbrainz(self) -> None:
+    def lookup_musicbrainz(self, query: str | None = None) -> None:
         ids = self.selected_track_ids()
         if not ids:
             return
         e, articles = self.model.edits, self._settings.articles
-        # Bij een samenwerking ("Queen & David Bowie") standaard op de eerste artiest zoeken.
-        names = artist_names(e.artist(ids[0]), articles)
-        name = names[0] if names else e.artist(ids[0])
+        name = query if query is not None else self.selected_editor_text()
+        if not name:
+            # Bij een samenwerking ("Queen & David Bowie") standaard op de eerste artiest zoeken.
+            names = artist_names(e.artist(ids[0]), articles)
+            name = names[0] if names else e.artist(ids[0])
         dialog = MusicBrainzDialog(self.mb_client_factory(), name, self._pool, self)
         chosen = dialog.chosen if dialog.exec() else None
         if chosen is None:
