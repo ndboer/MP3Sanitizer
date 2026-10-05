@@ -20,7 +20,9 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from mp3sanitizer.core.normalize import DEFAULT_ARTICLES
+from rapidfuzz import fuzz
+
+from mp3sanitizer.core.normalize import DEFAULT_ARTICLES, match_key
 
 _SEPARATOR = re.compile(
     r"\s*(?:[&,+;]|\b(?:x|vs\.?|versus|feat\.?|ft\.?|featuring|with|met|and|en)\b\.?)\s*",
@@ -71,16 +73,29 @@ def is_collaboration(text: str, articles: Iterable[str] = DEFAULT_ARTICLES) -> b
     return len(split_artists(text, articles)) > 1
 
 
+WHOLE_FIELD_RATIO = 90
+
+
+def covers_whole_field(text: str, new: str, articles: Iterable[str] = DEFAULT_ARTICLES) -> bool:
+    """Is ``new`` een schrijfwijze van het hele veld ``text`` (niet van één deel ervan)?"""
+    articles = tuple(articles)
+    a, b = match_key(text, articles), match_key(new, articles)
+    return bool(a) and fuzz.ratio(a, b) >= WHOLE_FIELD_RATIO
+
+
 def replace_artist(
     text: str, old: str, new: str, articles: Iterable[str] = DEFAULT_ARTICLES
 ) -> str | None:
     """Vervang artiest ``old`` door ``new`` in het veld ``text``.
 
     - Is het hele veld gelijk aan ``old``, dan wordt het ``new``.
+    - Dekt ``new`` het hele veld al ("adam and the ants" → "Adam and the Ants", terwijl alleen
+      het deel "adam" gezocht werd), dan wordt ook het hele veld ``new``. Anders zou het
+      'samenwerkingsdeel' vervangen worden: "Adam and the Ants and the ants".
     - Anders wordt elk deel dat exact ``old`` is vervangen; de rest blijft staan.
     - ``None`` als ``old`` niet in het veld voorkomt.
     """
-    if text.strip() == old.strip():
+    if text.strip() == old.strip() or covers_whole_field(text, new, articles):
         return new
     parts = [p for p in split_artists(text, articles) if p.name == old.strip()]
     if not parts:

@@ -62,3 +62,17 @@ def test_replace_only_that_artist(text, old, new, expected):
 def test_replace_absent_returns_none():
     assert replace_artist("Queen & David Bowie", "Freddie", "X") is None
     assert replace_artist("Queensryche", "Queen", "X") is None  # geen deel van een woord
+
+
+@pytest.mark.parametrize(
+    ("text", "old", "new", "expected"),
+    [
+        ("adam and the ants", "adam", "Adam and the Ants", "Adam and the Ants"),
+        ("adam and the ants", "the ants", "Adam and the Ants", "Adam and the Ants"),
+        ("Simon and Garfunkel", "Simon", "Simon & Garfunkel", "Simon & Garfunkel"),
+        ("Earth, Wind and Fire", "Earth", "Earth, Wind & Fire", "Earth, Wind & Fire"),
+        ("Quien & David Bowie", "Quien", "Queen", "Queen & David Bowie"),
+    ],
+)
+def test_new_name_covering_whole_field_replaces_everything(text, old, new, expected):
+    assert replace_artist(text, old, new, ["The"]) == expected

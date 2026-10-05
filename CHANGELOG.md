@@ -7,6 +7,12 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Fixed
+- Artiestnamen met "and"/"en"/"&" erin (bijv. "adam and the ants") werden bij het toepassen
+  van een voorstel verdubbeld tot "Adam and the Ants and the ants". Dekt de nieuwe naam het
+  hele artiestveld, dan wordt nu het hele veld vervangen; echte samenwerkingen
+  ("Quien & David Bowie" → "Queen & David Bowie") blijven per artiest werken.
+
 ## [0.14.0] - 2026-10-05
 
 ### Fixed

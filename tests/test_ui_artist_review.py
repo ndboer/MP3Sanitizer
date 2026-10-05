@@ -211,3 +211,21 @@ def test_recheck_not_found_proposes_own_correction(qapp, pool, tmp_path):
     top = _top(d, "Quien")
     assert top.text(Col.PROPOSAL) == "Quinn"
     assert top.checkState(Col.ARTIST) == Qt.CheckState.Checked
+
+
+class BandMB:
+    def search_recording(self, artist, title):
+        return [rec(title, [("aa", "Adam and the Ants")], 1980)]
+
+
+def test_band_name_with_and_is_not_doubled(qapp, pool, tmp_path):
+    m = TrackTableModel()
+    m.undo_stack = QUndoStack()
+    m.append_tracks(
+        [track_from_path(0, tmp_path / "adam and the ants - Ant Music (1980).mp3", tmp_path)]
+    )
+    d, _ = _dialog(m, pool, mb=BandMB())
+    d.filter_combo.setCurrentIndex(1)
+    _run(d, "A")
+    d.apply_checked()
+    assert m.edits.artist(0) == "Adam and the Ants"
