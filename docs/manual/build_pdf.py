@@ -658,6 +658,11 @@ story += [
             "artiest vervangen.",
             "Dubbelklik op een voorstel om het aan te passen, of kies via rechtsklik een andere "
             "kandidaat. Onder elke artiest staan de tracks (Enter speelt af).",
+            "Is de naam in je collectie verkeerd geschreven (“Quien”), dan vindt MusicBrainz "
+            f"vaak niets. Kies <b>Naam corrigeren en opnieuw zoeken</b> ({kbd('F2')}), typ de "
+            "juiste naam (“Queen”) en de tracks worden daarmee opnieuw opgezocht, zonder het "
+            "venster te sluiten. Bij toepassen wordt “Quien &amp; David Bowie” dan "
+            "“Queen &amp; David Bowie”: alleen die artiest wordt vervangen.",
             "<b>Toepassen op aangevinkte</b> voert alles door als één undo-stap. Goedgekeurde en "
             "<b>genegeerde</b> artiesten worden onthouden en volgende keer overgeslagen; een "
             "letter die helemaal klaar is krijgt een ✓.",

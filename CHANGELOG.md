@@ -7,6 +7,13 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Added
+- Artiestencontrole: **Naam corrigeren en opnieuw zoeken…** (F2, knop of rechtsklik). Typ de
+  juiste schrijfwijze van een verkeerd geschreven artiest ("Quien" → "Queen"); de tracks worden
+  daarmee opnieuw opgezocht zonder het venster te sluiten, en het voorstel staat meteen
+  aangevinkt. In samenwerkingen wordt alleen die artiest vervangen
+  ("Quien & David Bowie" → "Queen & David Bowie").
+
 ## [0.13.1] - 2026-10-05
 
 ### Fixed

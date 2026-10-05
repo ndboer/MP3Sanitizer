@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QMenu,
     QProgressBar,
@@ -40,12 +41,13 @@ from mp3sanitizer.core.artist_review import (
     TrackRef,
     collect,
     letter_counts,
+    recheck,
     run_review,
 )
 from mp3sanitizer.core.normalize import DEFAULT_ARTICLES, fold
 from mp3sanitizer.core.settings import Settings
 from mp3sanitizer.ui.track_model import ERROR_COLOR, TrackTableModel
-from mp3sanitizer.ui.workers import Worker
+from mp3sanitizer.ui.workers import FunctionWorker, JobRunner, Worker
 
 PROPOSAL_ROLE = Qt.ItemDataRole.UserRole + 40
 TRACK_ID_ROLE = Qt.ItemDataRole.UserRole + 41
@@ -115,6 +117,7 @@ class ArtistReviewDialog(QDialog):
         self._play = play
         self._show_track = show_track
         self._worker: ReviewWorker | None = None
+        self.jobs = JobRunner(pool, self)  # opnieuw zoeken per artiest
         self._items: dict[str, QTreeWidgetItem] = {}  # artiestnaam → item
 
         # --- beginletters ---------------------------------------------------------------
@@ -170,6 +173,17 @@ class ArtistReviewDialog(QDialog):
             "Aangevinkte artiesten ongewijzigd laten en de volgende keer overslaan"
         )
         self.ignore_button.clicked.connect(self.ignore_checked)
+        self.recheck_button = QPushButton("Naam &corrigeren en opnieuw zoeken…", self)
+        self.recheck_button.setToolTip(
+            "Verkeerd geschreven artiest (bijv. “Quien”): typ de juiste naam en zoek de tracks "
+            "daarmee opnieuw op (F2)"
+        )
+        self.recheck_button.setShortcut("F2")
+        self.recheck_button.clicked.connect(lambda: self.ask_recheck())
+        self.tree.currentItemChanged.connect(
+            lambda *_: self.recheck_button.setEnabled(self._current_top() is not None)
+        )
+        self.recheck_button.setEnabled(False)
         self.result_label = QLabel(self)
         close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
         close.button(QDialogButtonBox.StandardButton.Close).setText("Sluiten")
@@ -191,6 +205,7 @@ class ArtistReviewDialog(QDialog):
             QLabel("Dubbelklik op een voorstel om het aan te passen; rechtsklik voor meer.", self)
         )
         actions.addStretch(1)
+        actions.addWidget(self.recheck_button)
         actions.addWidget(self.ignore_button)
         actions.addWidget(self.apply_button)
         layout = QVBoxLayout(self)
@@ -313,7 +328,9 @@ class ArtistReviewDialog(QDialog):
         assert isinstance(proposal, ArtistProposal)
         self.add_proposal(proposal)
 
-    def add_proposal(self, p: ArtistProposal) -> QTreeWidgetItem:
+    def add_proposal(
+        self, p: ArtistProposal, index: int | None = None, checked_override: bool = False
+    ) -> QTreeWidgetItem:
         entry = p.entry
         top = QTreeWidgetItem(
             [entry.name, p.proposal, p.status.label, str(len(entry.tracks)), _years(entry)]
@@ -333,7 +350,9 @@ class ArtistReviewDialog(QDialog):
                 ),
             )
         checked = (
-            Qt.CheckState.Checked if p.status in _CHECKED_BY_DEFAULT else Qt.CheckState.Unchecked
+            Qt.CheckState.Checked
+            if checked_override or p.status in _CHECKED_BY_DEFAULT
+            else Qt.CheckState.Unchecked
         )
         for ref in entry.tracks:
             ev = p.evidence.get(ref.track_id)
@@ -358,7 +377,10 @@ class ArtistReviewDialog(QDialog):
             top.addChild(child)
         if p.status is Status.NOT_FOUND:
             top.setForeground(Col.STATUS, ERROR_COLOR)
-        self.tree.addTopLevelItem(top)
+        if index is None:
+            self.tree.addTopLevelItem(top)
+        else:
+            self.tree.insertTopLevelItem(index, top)
         self._items[entry.name] = top
         self._apply_filter_to(top)
         self._update_buttons()
@@ -496,6 +518,9 @@ class ArtistReviewDialog(QDialog):
         menu.addAction("Voorstel &bewerken…").triggered.connect(
             lambda: self._edit_proposal(target, Col.PROPOSAL)
         )
+        recheck = menu.addAction("Naam &corrigeren en opnieuw zoeken…")
+        recheck.setEnabled(not self.jobs.busy(f"recheck:{p.entry.name}"))
+        recheck.triggered.connect(lambda: self.ask_recheck(top))
         if tid is not None:
             menu.addSeparator()
             play = menu.addAction("&Afspelen")
@@ -506,8 +531,62 @@ class ArtistReviewDialog(QDialog):
             show.triggered.connect(lambda: self._show_track(tid) if self._show_track else None)
         menu.exec(self.tree.viewport().mapToGlobal(pos))
 
+    # --- naam corrigeren en opnieuw zoeken ------------------------------------------------
+    def _current_top(self) -> QTreeWidgetItem | None:
+        item = self.tree.currentItem()
+        return (item.parent() or item) if item is not None else None
+
+    def ask_recheck(self, top: QTreeWidgetItem | None = None) -> None:
+        top = top or self._current_top()
+        if top is None:
+            return
+        p: ArtistProposal = top.data(Col.ARTIST, PROPOSAL_ROLE)
+        name, ok = QInputDialog.getText(
+            self,
+            "Naam corrigeren",
+            f"Juiste schrijfwijze voor “{p.entry.name}” ({len(p.entry.tracks)} tracks).\n"
+            "De tracks worden met deze naam opnieuw opgezocht; in samenwerkingen alleen "
+            "deze artiest.",
+            text=top.text(Col.PROPOSAL),
+        )
+        if ok and name.strip():
+            self.recheck(top, name)
+
+    def recheck(self, top: QTreeWidgetItem, corrected: str) -> None:
+        """Zoek één artiest opnieuw op met een verbeterde naam; het venster blijft open."""
+        p: ArtistProposal = top.data(Col.ARTIST, PROPOSAL_ROLE)
+        corrected = " ".join(corrected.split())
+        top.setText(Col.PROPOSAL, corrected)
+        top.setText(Col.STATUS, "Opnieuw zoeken…")
+        entry = p.entry
+        self.jobs.run(
+            f"recheck:{entry.name}",
+            FunctionWorker(recheck, self._client_factory(), entry, corrected, self._articles),
+            lambda result, name=entry.name: self._on_recheck(name, result),
+        )
+
+    def _on_recheck(self, name: str, result: object) -> None:
+        old = self._items.get(name)
+        if old is None:  # intussen toegepast of genegeerd
+            return
+        if not isinstance(result, ArtistProposal):
+            old.setText(Col.STATUS, "Fout")
+            self.status.setStyleSheet(f"color: {ERROR_COLOR.name()}")
+            self.status.setText(f"Opnieuw zoeken mislukt: {result}")
+            return
+        index = self.tree.indexOfTopLevelItem(old)
+        self.tree.takeTopLevelItem(index)
+        # De gebruiker heeft de naam zelf verbeterd: het voorstel staat meteen aangevinkt.
+        item = self.add_proposal(result, index, checked_override=True)
+        self.tree.setCurrentItem(item)
+        self.status.setStyleSheet("")
+        self.status.setText(
+            f"“{name}” opnieuw opgezocht als “{result.proposal}”: {result.status.label.lower()}."
+        )
+
     # --- afsluiten ------------------------------------------------------------------------
     def reject(self) -> None:
+        self.jobs.cancel_all()
         if self._worker is not None:
             self._worker.cancel()
         super().reject()

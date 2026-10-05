@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 
-from mp3sanitizer.core.artists import artist_names
+from mp3sanitizer.core.artists import artist_names, replace_artist
 from mp3sanitizer.core.fuzzy import combined_score
 from mp3sanitizer.core.musicbrainz import MusicBrainzError, RecordingCandidate
 from mp3sanitizer.core.normalize import (
@@ -296,3 +296,40 @@ def run_review(
             evidence[ref.track_id] = looked_up[ref.track_id].get(entry.name, Evidence(ref.track_id))
         on_result(summarize(entry, evidence))
     return None
+
+
+def recheck(
+    client: RecordingSearch,
+    entry: ArtistEntry,
+    corrected: str,
+    articles: Iterable[str] = DEFAULT_ARTICLES,
+) -> ArtistProposal | str:
+    """Zoek de tracks van ``entry`` opnieuw op, met ``corrected`` in plaats van de huidige naam.
+
+    Voor een verkeerd geschreven naam ("Quien") vindt MusicBrainz vaak niets; met de door de
+    gebruiker verbeterde naam ("Queen") wel. In samenwerkingen wordt alleen deze artiest
+    vervangen. Het voorstel blijft bij de oorspronkelijke artiest horen, zodat toepassen
+    "Quien" vervangt. Geeft een foutmelding terug als MusicBrainz onbereikbaar is.
+    """
+    articles = tuple(articles)
+    corrected = " ".join(corrected.split())
+    tracks = [
+        TrackRef(
+            t.track_id,
+            replace_artist(t.artist, entry.name, corrected, articles) or corrected,
+            t.title,
+            t.year,
+        )
+        for t in entry.tracks
+    ]
+    results: list[ArtistProposal] = []
+    error = run_review(client, [ArtistEntry(corrected, tracks)], articles, on_result=results.append)
+    if error or not results:
+        return error or "Geen resultaat"
+    p = results[0]
+    p.entry = entry
+    if p.status is Status.NOT_FOUND:
+        p.proposal = corrected  # niets gevonden: de eigen correctie is het voorstel
+    elif p.status is Status.OK and p.proposal != entry.name:
+        p.status = Status.PROPOSAL
+    return p

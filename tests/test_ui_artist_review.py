@@ -161,3 +161,53 @@ def test_ignored_artists_are_skipped_next_time(model, pool):
     assert d2.letter_buttons["Z"].text() == "Z✓"
     d2.include_reviewed.setChecked(True)
     assert d2.letter_buttons["Z"].isEnabled()
+
+
+class StrictMB:
+    """Vindt alleen iets als de artiest goed geschreven is (zoals MusicBrainz in de praktijk)."""
+
+    def __init__(self):
+        self.calls = []
+
+    def search_recording(self, artist, title):
+        self.calls.append((artist, title))
+        if "queen" not in artist.casefold():
+            return []
+        credits = [("q", "Queen")]
+        if "bowie" in artist.casefold():
+            credits.append(("d", "David Bowie"))
+        return [rec(title, credits, 1981)]
+
+
+def test_correct_name_and_search_again_keeps_dialog_open(qapp, pool, tmp_path):
+    names = ["Quien & David Bowie - Under Pressure (1981).mp3", "Quien - Innuendo (1991).mp3"]
+    m = TrackTableModel()
+    m.undo_stack = QUndoStack()
+    m.append_tracks([track_from_path(i, tmp_path / n, tmp_path) for i, n in enumerate(names)])
+    mb = StrictMB()
+    d, _ = _dialog(m, pool, mb=mb)
+    _run(d, "Q")
+    top = _top(d, "Quien")
+    assert top.text(Col.STATUS) == "Niet gevonden"
+    d.recheck(top, "  Queen ")
+    wait_for(lambda: _top(d, "Quien").text(Col.STATUS) == "Voorstel")
+    assert ("Queen & David Bowie", "Under Pressure") in mb.calls  # alleen Quien vervangen
+    top = _top(d, "Quien")
+    assert top.text(Col.PROPOSAL) == "Queen"
+    assert top.checkState(Col.ARTIST) == Qt.CheckState.Checked
+    d.apply_checked()
+    assert m.edits.artist(0) == "Queen & David Bowie"
+    assert m.edits.artist(1) == "Queen"
+
+
+def test_recheck_not_found_proposes_own_correction(qapp, pool, tmp_path):
+    m = TrackTableModel()
+    m.undo_stack = QUndoStack()
+    m.append_tracks([track_from_path(0, tmp_path / "Quien - Song (1990).mp3", tmp_path)])
+    d, _ = _dialog(m, pool, mb=StrictMB())
+    _run(d, "Q")
+    d.recheck(_top(d, "Quien"), "Quinn")
+    wait_for(lambda: _top(d, "Quien").text(Col.STATUS) == "Niet gevonden")
+    top = _top(d, "Quien")
+    assert top.text(Col.PROPOSAL) == "Quinn"
+    assert top.checkState(Col.ARTIST) == Qt.CheckState.Checked
