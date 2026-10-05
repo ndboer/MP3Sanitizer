@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-05
+
 ### Fixed
 - Tests en releases bleven soms eindeloos hangen: de Windows-mediabackend blokkeerde in een
   afspeeltest. De tests gebruiken nu een nepspeler (de echte wordt gecontroleerd door de
