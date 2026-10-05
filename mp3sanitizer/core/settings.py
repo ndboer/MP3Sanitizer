@@ -56,6 +56,9 @@ class Settings:
     dup_use_duration: bool = False
     # Updatecheck bij het opstarten (alleen een melding; nooit automatisch downloaden)
     check_updates: bool = False
+    # Artiestencontrole: gevouwen naam → "approved" | "ignored" (wordt de volgende keer
+    # overgeslagen). Een nieuw veld met standaardwaarde: oudere versies negeren het gewoon.
+    artist_review: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Settings:
@@ -73,6 +76,10 @@ class Settings:
                 ok = isinstance(value, int) and not isinstance(value, bool)
             elif isinstance(expected, list):
                 ok = isinstance(value, list) and all(isinstance(v, str) for v in value)
+            elif isinstance(expected, dict):
+                ok = isinstance(value, dict) and all(
+                    isinstance(k, str) and isinstance(v, str) for k, v in value.items()
+                )
             elif isinstance(expected, str):
                 ok = isinstance(value, str)
             else:  # optionele tekst

@@ -12,16 +12,19 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import ClassVar
 
 from PySide6.QtCore import QItemSelectionModel, QPoint, Qt, QThreadPool
 from PySide6.QtWidgets import QApplication, QMenu
 
+from mp3sanitizer.core.artists import artist_names
 from mp3sanitizer.core.journal import JournalStore
 from mp3sanitizer.core.models import AudioInfo, Field
-from mp3sanitizer.core.musicbrainz import ArtistCandidate
+from mp3sanitizer.core.musicbrainz import ArtistCandidate, RecordingCandidate
 from mp3sanitizer.core.rules.config import RulesConfig
 from mp3sanitizer.core.settings import SettingsStore
 from mp3sanitizer.ui.about_dialog import AboutDialog
+from mp3sanitizer.ui.artist_review_dialog import ArtistReviewDialog
 from mp3sanitizer.ui.artist_search import ArtistDialog, MusicBrainzDialog
 from mp3sanitizer.ui.bulk_edit_dialog import BulkEditDialog
 from mp3sanitizer.ui.corrections_dialog import CorrectionsDialog, RuleSettingsDialog, Scope
@@ -320,6 +323,44 @@ mbd.show()
 pump(1.0)
 save(mbd, "15_musicbrainz")
 mbd.close()
+
+
+# 9b. Artiestencontrole (per beginletter)
+class FakeRecordings:
+    """Doet alsof elke track op MusicBrainz staat, onder de officiële schrijfwijze."""
+
+    OFFICIAL: ClassVar = {
+        "beatles": "The Beatles",
+        "the beatels": "The Beatles",
+        "beatles, the": "The Beatles",
+        "beyonce": "Beyoncé",
+        "bruce springsteen": "Bruce Springsteen",
+        "queen": "Queen",
+    }
+
+    def search_recording(self, artist, title):
+        credits = tuple(
+            (name.casefold(), self.OFFICIAL.get(name.casefold(), name))
+            for name in artist_names(artist)
+        )
+        return [RecordingCandidate("r", title, artist, 1970, "", "", 100, None, credits)]
+
+
+m.edits.clear()
+rd = ArtistReviewDialog(m, w._pool, FakeRecordings, w._settings, w)
+rd.resize(1150, 560)
+rd.filter_combo.setCurrentIndex(1)  # alles tonen
+for letter in ("A", "B", "Q"):
+    if rd.letter_buttons[letter].isEnabled():
+        rd.letter_buttons[letter].setChecked(True)
+rd.show()
+rd.start()
+while rd._worker is not None:
+    pump(0.05)
+rd.tree.expandItem(rd.tree.topLevelItem(0))
+save(rd, "15b_artiesten_controleren")
+rd.close()
+w._settings.artist_review.clear()
 
 # 10. Duplicaten
 w._settings.dup_ignore_versions = True

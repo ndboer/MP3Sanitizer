@@ -637,6 +637,37 @@ story += [
         "De app doet maximaal één verzoek per seconde (zoals MusicBrainz vraagt) en onthoudt "
         "de resultaten 30 dagen, dus dezelfde vraag is de volgende keer direct beantwoord."
     ),
+    h2("Alle artiesten controleren"),
+    p(
+        "Met <b>Bewerken → Artiesten controleren (MusicBrainz)</b> ga je de hele collectie na, "
+        "letter voor letter. Kies één of meer beginletters (de tooltip toont het aantal "
+        "artiesten en tracks) en klik op <b>Controleren</b>. Elke track wordt opgezocht op "
+        "artiest + titel; per artiest wint de officiële naam waar de meeste tracks naar wijzen. "
+        "Dat kost ongeveer één seconde per track; eerder opgezochte tracks komen uit de cache. "
+        "<b>Stoppen</b> kan altijd; de resultaten tot dan blijven staan."
+    ),
+    *bullets(
+        [
+            "<b>Juist</b>: de schrijfwijze klopt al. <b>Voorstel</b>: een andere schrijfwijze, "
+            "standaard aangevinkt.",
+            "<b>Meerdere artiesten</b>: tracks wijzen naar verschillende artiesten met dezelfde "
+            "naam (bijvoorbeeld twee groepen Nirvana); het jaar van de track helpt bij het "
+            "kiezen, en elke track heeft een eigen voorstel.",
+            "<b>Twijfel</b> en <b>Niet gevonden</b>: niet aangevinkt; controleer zelf.",
+            "Samenwerkingen tellen bij elke betrokken artiest; bij toepassen wordt alleen die "
+            "artiest vervangen.",
+            "Dubbelklik op een voorstel om het aan te passen, of kies via rechtsklik een andere "
+            "kandidaat. Onder elke artiest staan de tracks (Enter speelt af).",
+            "<b>Toepassen op aangevinkte</b> voert alles door als één undo-stap. Goedgekeurde en "
+            "<b>genegeerde</b> artiesten worden onthouden en volgende keer overgeslagen; een "
+            "letter die helemaal klaar is krijgt een ✓.",
+        ]
+    ),
+    figure(
+        "15b_artiesten_controleren",
+        "Artiestencontrole voor de letters A, B en Q: voorstellen per artiest met de tracks "
+        "eronder.",
+    ),
     h2("Track opzoeken (artiest + titel)"),
     p(
         "Rechtsklik op een track en kies <b>Opzoeken op MusicBrainz (artiest + titel)</b> om de "

@@ -77,12 +77,21 @@ class RecordingCandidate:
     disambiguation: str
     score: int
     length_s: int | None = None
+    # (mbid, officiële naam) per artiest in de credit; de officiële naam kan afwijken van hoe
+    # de artiest op deze opname vermeld staat.
+    credits: tuple[tuple[str, str], ...] = ()
 
     @classmethod
     def from_api(cls, data: dict[str, Any]) -> RecordingCandidate:
+        parts = data.get("artist-credit") or []
         credit = "".join(
             f"{c.get('name') or c.get('artist', {}).get('name', '')}{c.get('joinphrase', '')}"
-            for c in data.get("artist-credit") or []
+            for c in parts
+        )
+        credits = tuple(
+            (str(c["artist"].get("id", "")), str(c["artist"].get("name") or c.get("name", "")))
+            for c in parts
+            if isinstance(c.get("artist"), dict) and c["artist"].get("id")
         )
         date = str(data.get("first-release-date") or "")
         releases = data.get("releases") or []
@@ -96,6 +105,7 @@ class RecordingCandidate:
             disambiguation=str(data.get("disambiguation", "")),
             score=int(data.get("score", 0)),
             length_s=round(length / 1000) if isinstance(length, int | float) else None,
+            credits=credits,
         )
 
 
@@ -116,8 +126,8 @@ def cache_key(name: str) -> str:
 
 
 def recording_key(artist: str, title: str) -> str:
-    """Cachesleutel voor een opname; het voorvoegsel voorkomt botsingen met artiesten."""
-    return f"{_RECORDING_PREFIX}{fold(artist)}{fold(title)}"
+    """Cachesleutel voor een opname (v2: met artiest-ID's); voorvoegsel scheidt van artiesten."""
+    return f"{_RECORDING_PREFIX}v2:{fold(artist)}{fold(title)}"
 
 
 class RateLimiter:

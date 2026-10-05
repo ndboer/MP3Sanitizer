@@ -59,6 +59,7 @@ from mp3sanitizer.core.rules.config import RulesStore
 from mp3sanitizer.core.settings import SettingsStore
 from mp3sanitizer.core.update_check import UpdateResult, check_for_update
 from mp3sanitizer.ui.about_dialog import AboutDialog
+from mp3sanitizer.ui.artist_review_dialog import ArtistReviewDialog
 from mp3sanitizer.ui.artist_search import ArtistDialog, MusicBrainzDialog
 from mp3sanitizer.ui.bulk_edit_dialog import BulkEditDialog
 from mp3sanitizer.ui.corrections_dialog import CorrectionsDialog, Scope
@@ -284,6 +285,11 @@ class MainWindow(QMainWindow):
         self.act_artist_overview = QAction("Artiesten&overzicht en voorstellen…", self)
         self.act_artist_overview.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.act_artist_overview.triggered.connect(lambda: self.open_artist_dialog(overview=True))
+        self.act_artist_review = QAction("Artiesten &controleren (MusicBrainz)…", self)
+        self.act_artist_review.setToolTip(
+            "Alle artiesten per beginletter nagaan op MusicBrainz en voorstellen beoordelen"
+        )
+        self.act_artist_review.triggered.connect(self.open_artist_review)
         self.act_corrections = QAction("&Batch-correcties…", self)
         self.act_corrections.setShortcut(QKeySequence("Ctrl+K"))
         self.act_corrections.setToolTip("Opschoonregels via een preview toepassen (Ctrl+K)")
@@ -393,6 +399,7 @@ class MainWindow(QMainWindow):
         m_edit.addSeparator()
         m_edit.addAction(self.act_artists)
         m_edit.addAction(self.act_artist_overview)
+        m_edit.addAction(self.act_artist_review)
         m_edit.addAction(self.act_duplicates)
         m_edit.addSeparator()
         m_edit.addAction(self.act_corrections)
@@ -631,6 +638,18 @@ class MainWindow(QMainWindow):
             dialog.tabs.setCurrentIndex(1)
         dialog.exec()
         self._settings.fuzzy_threshold = dialog.threshold_slider.value()
+
+    def open_artist_review(self) -> None:
+        dialog = ArtistReviewDialog(
+            self.model,
+            self._pool,
+            self.mb_client_factory,
+            self._settings,
+            self,
+            play=self.play_track,
+            show_track=self.show_track,
+        )
+        dialog.exec()
 
     def show_track(self, track_id: int) -> None:
         """Selecteer een track in de tabel (filter en zoekterm worden zo nodig gewist)."""
