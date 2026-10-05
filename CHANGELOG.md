@@ -7,6 +7,11 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Fixed
+- Release op de CI: de release-notes worden in UTF-8 geschreven. Tekens als "→" in de
+  changelog lieten de build eerder stil mislukken (0.11.0 en 0.13.0 verschenen daardoor niet
+  als GitHub-release); deze versie bevat alles uit 0.13.0.
+
 ## [0.13.0] - 2026-10-05
 
 ### Added

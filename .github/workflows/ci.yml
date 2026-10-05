@@ -52,8 +52,13 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           if (-not (Test-Path "dist/Mp3Sanitizer-handleiding-$version.pdf")) { throw "Handleiding ontbreekt" }
+          $env:PYTHONIOENCODING = "utf-8"
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
           uv run python scripts/release.py notes $version | Out-File -Encoding utf8 release-notes.md
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "::error::Release-notes konden niet worden gemaakt (exit $LASTEXITCODE)"
+            exit $LASTEXITCODE
+          }
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:

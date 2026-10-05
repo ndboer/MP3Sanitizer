@@ -288,6 +288,11 @@ def main(argv: list[str] | None = None) -> int:
     p_notes = sub.add_parser("notes", help="changelogsectie van een versie tonen")
     p_notes.add_argument("version")
     args = parser.parse_args(argv)
+    # Windows-runners schrijven standaard in cp1252; tekens als "→" in de changelog
+    # lieten 'notes' (naar een bestand gepijpt) dan stil crashen.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     try:
         if args.command == "release":
             release(args.version, push=args.push, no_build=args.no_build, dry=args.dry_run)
