@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-05
+
 ### Added
 - **Bewerken → Artiesten controleren (MusicBrainz)**: alle artiesten per beginletter nagaan.
   Elke track wordt opgezocht op artiest + titel; per artiest volgt een voorstel (officiële naam
