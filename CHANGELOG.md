@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-10-05
+
 ### Fixed
 - Artiestnamen met "and"/"en"/"&" erin (bijv. "adam and the ants") werden bij het toepassen
   van een voorstel verdubbeld tot "Adam and the Ants and the ants". Dekt de nieuwe naam het
