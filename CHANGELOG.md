@@ -7,6 +7,11 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Fixed
+- Tests en releases bleven soms eindeloos hangen: de Windows-mediabackend blokkeerde in een
+  afspeeltest. De tests gebruiken nu een nepspeler (de echte wordt gecontroleerd door de
+  smoke-test van de exe), en het releasescript stopt bij een time-out de hele procesboom.
+
 ### Added
 - Artiestencontrole: **Naam corrigeren en opnieuw zoeken…** (F2, knop of rechtsklik). Typ de
   juiste schrijfwijze van een verkeerd geschreven artiest ("Quien" → "Queen"); de tracks worden

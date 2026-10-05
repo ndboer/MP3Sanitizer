@@ -106,17 +106,27 @@ def run(
     print("  $", " ".join(cmd))
     if dry and not capture:
         return ""
-    try:
-        result = subprocess.run(
-            cmd,
-            cwd=ROOT,
-            capture_output=capture,
-            text=True,
-            timeout=timeout,
-            env={**os.environ, **env} if env else None,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise ReleaseError(f"Commando duurde langer dan {timeout:.0f} s: {' '.join(cmd)}") from exc
+    pipe = subprocess.PIPE if capture else None
+    with subprocess.Popen(
+        cmd,
+        cwd=ROOT,
+        stdout=pipe,
+        stderr=pipe,
+        text=True,
+        env={**os.environ, **env} if env else None,
+    ) as proc:
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            # De hele procesboom stoppen: 'uv run' start Python als kindproces, en alleen de
+            # ouder doden liet een hangende test eeuwig doorlopen.
+            if sys.platform == "win32":
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+            proc.kill()
+            raise ReleaseError(
+                f"Commando duurde langer dan {timeout:.0f} s: {' '.join(cmd)}"
+            ) from exc
+    result = subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip() if capture else ""
         raise ReleaseError(f"Commando mislukt ({result.returncode}): {' '.join(cmd)}\n{detail}")
