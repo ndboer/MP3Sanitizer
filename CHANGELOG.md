@@ -7,6 +7,12 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Fixed
+- Bandnamen met "&"/"and" binnen een samenwerking werden nog verdubbeld, bijv.
+  "Billy Cotton & His Band, Alan Breeze" → "Billy Cotton & His Band & His Band, Alan Breeze".
+  Dekt de nieuwe naam meerdere aangrenzende delen, dan wordt nu precies dat stuk vervangen en
+  blijven de andere artiesten staan.
+
 ## [0.14.1] - 2026-10-05
 
 ### Fixed

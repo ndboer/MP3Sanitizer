@@ -92,14 +92,31 @@ def replace_artist(
     - Dekt ``new`` het hele veld al ("adam and the ants" → "Adam and the Ants", terwijl alleen
       het deel "adam" gezocht werd), dan wordt ook het hele veld ``new``. Anders zou het
       'samenwerkingsdeel' vervangen worden: "Adam and the Ants and the ants".
-    - Anders wordt elk deel dat exact ``old`` is vervangen; de rest blijft staan.
+    - Anders wordt elk deel dat exact ``old`` is vervangen; de rest blijft staan. Dekt ``new``
+      meerdere aangrenzende delen ("Billy Cotton" + "His Band" in "Billy Cotton & His Band,
+      Alan Breeze"), dan wordt dat hele stuk vervangen en blijft "Alan Breeze" staan.
     - ``None`` als ``old`` niet in het veld voorkomt.
     """
+    articles = tuple(articles)
     if text.strip() == old.strip() or covers_whole_field(text, new, articles):
         return new
-    parts = [p for p in split_artists(text, articles) if p.name == old.strip()]
-    if not parts:
+    all_parts = split_artists(text, articles)
+    spans: list[tuple[int, int]] = []
+    for k, part in enumerate(all_parts):
+        if part.name != old.strip():
+            continue
+        start, end = part.start, part.end
+        # Het langste aaneengesloten stuk rond dit deel dat ``new`` al volledig beschrijft.
+        best = 0
+        for i in range(k + 1):
+            for j in range(k, len(all_parts)):
+                span = text[all_parts[i].start : all_parts[j].end]
+                if j - i > best and covers_whole_field(span, new, articles):
+                    best, start, end = j - i, all_parts[i].start, all_parts[j].end
+        if not spans or start >= spans[-1][1]:
+            spans.append((start, end))
+    if not spans:
         return None
-    for part in reversed(parts):  # van achter naar voren, zodat posities kloppen
-        text = text[: part.start] + new + text[part.end :]
+    for start, end in reversed(spans):  # van achter naar voren, zodat posities kloppen
+        text = text[:start] + new + text[end:]
     return text

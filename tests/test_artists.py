@@ -76,3 +76,25 @@ def test_replace_absent_returns_none():
 )
 def test_new_name_covering_whole_field_replaces_everything(text, old, new, expected):
     assert replace_artist(text, old, new, ["The"]) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "old", "new", "expected"),
+    [
+        (
+            "Billy Cotton & His Band, Alan Breeze",
+            "Billy Cotton",
+            "Billy Cotton & His Band",
+            "Billy Cotton & His Band, Alan Breeze",
+        ),
+        (
+            "Alan Breeze & Billy Cotton & His Band",
+            "His Band",
+            "Billy Cotton and His Band",
+            "Alan Breeze & Billy Cotton and His Band",
+        ),
+        ("Queen & David Bowie & Queen", "Queen", "QUEEN", "QUEEN & David Bowie & QUEEN"),
+    ],
+)
+def test_new_name_covering_adjacent_parts_replaces_that_span(text, old, new, expected):
+    assert replace_artist(text, old, new, ["The"]) == expected
