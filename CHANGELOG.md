@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-10
+
 ### Added
 - **Bestand → Verplaatsen naar jaarmap…**: bestanden naar een map per jaar (of decennium)
   verplaatsen via de vertrouwde preview, met journaal en terugdraaien. Standaard blijven de
