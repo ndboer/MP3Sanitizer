@@ -117,3 +117,56 @@ def write_tags(path: Path, values: TagValues) -> TagValues:
     except Exception as exc:  # mutagen: uiteenlopende excepties per formaat
         raise TagWriteError(f"Tags schrijven mislukt: {exc}") from exc
     return before
+
+
+def write_clean_tags(path: Path, values: TagValues, backup: Path) -> tuple[TagValues, Path | None]:
+    """Schrijf alleen artiest, titel en jaar; alle andere tags (hoes, album, opmerkingen, ...)
+    vervallen.
+
+    Voor MP3 (ID3) wordt eerst de volledige oude tag als los bestand in ``backup`` bewaard, zodat
+    terugdraaien alles kan herstellen. Andere formaten worden niet opgeschoond: daar worden
+    alleen de drie tags bijgewerkt (backup ``None``).
+    """
+    from mutagen.id3 import ID3
+    from mutagen.id3 import delete as delete_id3
+
+    try:
+        raw = mutagen.File(path)
+    except Exception as exc:
+        raise TagWriteError(f"Kan bestand niet openen: {exc}") from exc
+    if raw is None:
+        raise TagWriteError("Onbekend formaat")
+    if not isinstance(raw.tags, ID3) and not (raw.tags is None and path.suffix.lower() == ".mp3"):
+        return write_tags(path, values), None
+    easy = mutagen.File(path, easy=True)
+    tags = easy.tags if easy is not None else None
+    before = (
+        TagValues(_first(tags, "artist"), _first(tags, "title"), _first(tags, "date"))
+        if tags is not None
+        else TagValues(None, None, None)
+    )
+    saved: Path | None = None
+    try:
+        if raw.tags is not None:
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            backup.write_bytes(b"")
+            raw.tags.save(backup)  # alleen de tag, als los bestand
+            saved = backup
+        delete_id3(path)  # ID3v1 en ID3v2
+    except Exception as exc:
+        raise TagWriteError(f"Tags opschonen mislukt: {exc}") from exc
+    write_tags(path, values)
+    return before, saved
+
+
+def restore_tag_backup(path: Path, backup: Path) -> None:
+    """Zet de volledige tag uit ``backup`` (van ``write_clean_tags``) terug op ``path``."""
+    from mutagen.id3 import ID3
+    from mutagen.id3 import delete as delete_id3
+
+    try:
+        tag = ID3(backup)
+        delete_id3(path)
+        tag.save(path)
+    except Exception as exc:
+        raise TagWriteError(f"Oude tags terugzetten mislukt: {exc}") from exc

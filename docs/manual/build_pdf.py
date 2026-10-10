@@ -935,6 +935,19 @@ story += [
         "voor onbekend jaar. Je gewone opslaan-instellingen veranderen hierdoor niet, en ook "
         "deze batch is terug te draaien."
     ),
+    h2("Tags schrijven en opschonen"),
+    p(
+        "<b>Bestand → Tags schrijven en opschonen…</b> schrijft artiest, titel en jaar naar de "
+        "tags van alle tracks (of alleen de geselecteerde rijen) en laat alle andere tags "
+        "vervallen: album, genre, opmerkingen, hoesafbeelding enzovoort. Bestanden worden niet "
+        "hernoemd of verplaatst. De optie <b>Overige tags verwijderen</b> staat ook in de "
+        "gewone opslaan-preview, onder <b>Tags bijwerken</b>."
+    ),
+    note(
+        "Opschonen werkt voor MP3 (ID3). De volledige oude tag wordt eerst als kopie in de map "
+        "met journalen bewaard, zodat <b>Laatste batch terugdraaien</b> alles terugzet, "
+        "inclusief de hoes. Bij andere formaten worden alleen de drie tags bijgewerkt."
+    ),
     h2("Na het opslaan"),
     p(
         "Het opslaan draait op de achtergrond met voortgangsbalk; <i>Annuleren</i> kan tussendoor. "

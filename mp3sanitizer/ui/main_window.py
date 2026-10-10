@@ -259,6 +259,12 @@ class MainWindow(QMainWindow):
             "met meerdere rijen geselecteerd alleen die"
         )
         self.act_move_year.triggered.connect(self.move_to_year_folders)
+        self.act_clean_tags = QAction("Tags schrijven en &opschonen…", self)
+        self.act_clean_tags.setToolTip(
+            "Artiest, titel en jaar naar de tags schrijven; alle andere tags vervallen "
+            "(via een preview; met meerdere rijen geselecteerd alleen die)"
+        )
+        self.act_clean_tags.triggered.connect(lambda: self.move_to_year_folders(clean_tags=True))
         self.act_undo_batch = QAction("Laatste batch &terugdraaien…", self)
         self.act_undo_batch.triggered.connect(self.undo_last_batch)
         self.act_save_session = QAction("Sessie op&slaan…", self)
@@ -388,6 +394,7 @@ class MainWindow(QMainWindow):
         m_file.addSeparator()
         m_file.addAction(self.act_save)
         m_file.addAction(self.act_move_year)
+        m_file.addAction(self.act_clean_tags)
         m_file.addAction(self.act_undo_batch)
         m_file.addSeparator()
         m_file.addAction(self.act_open_session)
@@ -1300,8 +1307,9 @@ class MainWindow(QMainWindow):
         self.model.flag_duplicates(dialog.duplicate_ids())
         self.start_save(dialog.selected_plans(), dialog.cleanup.isChecked())
 
-    def move_to_year_folders(self) -> None:
-        """Verplaats bestanden naar jaarmappen; met meerdere rijen geselecteerd alleen die."""
+    def move_to_year_folders(self, clean_tags: bool = False) -> None:
+        """Verplaats bestanden naar jaarmappen (of schoon met ``clean_tags`` de tags op);
+        met meerdere rijen geselecteerd alleen die."""
         if self._root is None or not self._ensure_idle():
             return
         inputs = self.plan_inputs()
@@ -1310,7 +1318,13 @@ class MainWindow(QMainWindow):
             ids = set(self.selected_track_ids())
             inputs = [i for i in inputs if i.track_id in ids]
         dialog = SavePreviewDialog(
-            inputs, self._root, self._settings, self, fixer=self, move_only=True
+            inputs,
+            self._root,
+            self._settings,
+            self,
+            fixer=self,
+            move_only=not clean_tags,
+            clean_tags=clean_tags,
         )
         if not dialog.exec():
             return

@@ -123,6 +123,8 @@ class RenamePlan:
     blocked: bool = False  # kan niet worden uitgevoerd (ongeldig of overgeslagen botsing)
     changed: bool = True  # False: niet bewerkt, alleen genormaliseerd/verplaatst
     note: str = ""  # leesbare uitleg van de waarschuwingen
+    strip_tags: bool = False  # overige tags verwijderen (alleen artiest/titel/jaar)
+    tag_backup: Path | None = None  # undo: volledige tag terugzetten uit deze backup
 
     @property
     def renames(self) -> bool:

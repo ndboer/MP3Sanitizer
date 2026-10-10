@@ -88,3 +88,16 @@ def test_move_only_selected_rows(window):
     _wait(w)
     assert (music / "1991" / "queen - Innuendo (1991).mp3").exists()  # bewerkt: nieuwe naam
     assert (music / "rommel" / "ABBA - Waterloo (1974).mp3").exists()  # niet geselecteerd
+
+
+def test_clean_tags_menu_presets_dialog(window, monkeypatch):
+    w, _music = window
+    monkeypatch.setattr(SavePreviewDialog, "exec", lambda self: w.shown_dialogs.append(self) or 0)
+    w.act_clean_tags.trigger()
+    (dialog,) = w.shown_dialogs
+    assert dialog.windowTitle() == "Tags schrijven en opschonen"
+    assert dialog.write_tags.isChecked() and dialog.strip_tags.isChecked()
+    assert dialog.options().strip_tags and dialog.options().folder_template is FolderTemplate.NONE
+    assert all(p.strip_tags and not p.renames for p in dialog.plans.values())
+    dialog.write_tags.setChecked(False)
+    assert not dialog.strip_tags.isChecked() and not dialog.strip_tags.isEnabled()

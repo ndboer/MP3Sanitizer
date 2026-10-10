@@ -71,6 +71,7 @@ class PlanOptions:
     write_tags: bool = False
     include_unchanged: bool = False  # ook niet-bewerkte tracks normaliseren/verplaatsen
     keep_names: bool = False  # niet-bewerkte tracks alleen verplaatsen, naam ongewijzigd
+    strip_tags: bool = False  # alleen artiest/titel/jaar bewaren (vereist write_tags)
 
 
 def path_key(path: Path | str) -> str:
@@ -159,7 +160,8 @@ def plan_renames(
             continue
         dst = target_path(inp, opts)
         tags = _tags_for(inp) if opts.write_tags else None
-        if same_path(dst, inp.src) and not (tags is not None and (inp.changed or inp.tag_mismatch)):
+        rewrite = tags is not None and (inp.changed or inp.tag_mismatch or opts.strip_tags)
+        if same_path(dst, inp.src) and not rewrite:
             continue
         candidates.append(_Candidate(inp, dst, tags, _invalid_reasons(inp, opts)))
 
@@ -254,6 +256,7 @@ def _resolve(
                 blocked=blocked,
                 changed=c.inp.changed,
                 note="; ".join(notes),
+                strip_tags=opts.strip_tags and c.tags is not None,
             )
         )
     return plans, new_staying

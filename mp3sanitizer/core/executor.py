@@ -21,7 +21,12 @@ from pathlib import Path
 from mp3sanitizer.core.journal import JournalEntry, JournalWriter, Op
 from mp3sanitizer.core.models import RenamePlan, TagValues
 from mp3sanitizer.core.planner import path_key
-from mp3sanitizer.core.tags import TagWriteError, write_tags
+from mp3sanitizer.core.tags import (
+    TagWriteError,
+    restore_tag_backup,
+    write_clean_tags,
+    write_tags,
+)
 
 log = logging.getLogger(__name__)
 
@@ -135,8 +140,16 @@ def execute(
             if op is Op.MOVE:
                 old_dirs.add(p.src.parent)
         if p.tags is not None:
+            backup: Path | None = None
             try:
-                before = write_tags(final, p.tags)
+                if p.tag_backup is not None:  # undo van opschonen: de hele oude tag terug
+                    before = write_tags(final, p.tags)
+                    restore_tag_backup(final, p.tag_backup)
+                elif p.strip_tags:
+                    target = writer.store.directory / "tag-backup" / batch_id / f"{i}.id3"
+                    before, backup = write_clean_tags(final, p.tags, target)
+                else:
+                    before = write_tags(final, p.tags)
             except TagWriteError as exc:
                 result.failures.append(Failure(p.track_id, final, str(exc)))
                 writer.add(
@@ -153,6 +166,7 @@ def execute(
                         track_id=p.track_id,
                         tags_before=before.to_dict(),
                         tags_after=p.tags.to_dict(),
+                        tags_backup=None if backup is None else str(backup),
                     )
                 )
     if progress is not None:

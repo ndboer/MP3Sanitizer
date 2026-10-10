@@ -54,6 +54,7 @@ class JournalEntry:
     track_id: int | None = None
     tags_before: dict[str, str | None] | None = None
     tags_after: dict[str, str | None] | None = None
+    tags_backup: str | None = None  # kopie van de volledige oude tag (bij opschonen)
     app_version: str = ""  # versie die deze bewerking uitvoerde
 
     def to_dict(self) -> dict[str, Any]:
@@ -72,6 +73,7 @@ class JournalEntry:
             track_id=data.get("track_id"),
             tags_before=data.get("tags_before"),
             tags_after=data.get("tags_after"),
+            tags_backup=data.get("tags_backup"),
             app_version=str(data.get("app_version", "")),
         )
 
@@ -238,9 +240,12 @@ def undo_plans(journal: Journal) -> list[RenamePlan]:
     """Plannen die de gelukte operaties van een batch in omgekeerde volgorde terugdraaien."""
     # Per eindpad de tags van vóór de batch, zodat die na het terugzetten worden hersteld.
     tags_at: dict[str, TagValues] = {}
+    backup_at: dict[str, Path] = {}  # opgeschoonde tags: de volledige oude tag terugzetten
     for e in journal.entries:
         if e.ok and e.op is Op.TAG and e.tags_before is not None:
             tags_at[e.dst] = TagValues.from_dict(e.tags_before)
+            if e.tags_backup:
+                backup_at[e.dst] = Path(e.tags_backup)
 
     # Tags op een pad dat ook hernoemd is, worden met die rename meegenomen.
     renamed_to = {e.dst for e in journal.entries if e.ok and e.op in (Op.RENAME, Op.MOVE)}
@@ -251,8 +256,24 @@ def undo_plans(journal: Journal) -> list[RenamePlan]:
             continue
         tid = e.track_id if e.track_id is not None else -1
         if e.op in (Op.RENAME, Op.MOVE):
-            plans.append(RenamePlan(tid, Path(e.dst), Path(e.src), tags=tags_at.get(e.dst)))
+            plans.append(
+                RenamePlan(
+                    tid,
+                    Path(e.dst),
+                    Path(e.src),
+                    tags=tags_at.get(e.dst),
+                    tag_backup=backup_at.get(e.dst),
+                )
+            )
         elif e.op is Op.TAG and e.dst not in renamed_to and e.dst in tags_at:
             # Alleen tags gewijzigd, geen rename: tags op dezelfde plek herstellen.
-            plans.append(RenamePlan(tid, Path(e.dst), Path(e.dst), tags=tags_at[e.dst]))
+            plans.append(
+                RenamePlan(
+                    tid,
+                    Path(e.dst),
+                    Path(e.dst),
+                    tags=tags_at[e.dst],
+                    tag_backup=backup_at.get(e.dst),
+                )
+            )
     return plans

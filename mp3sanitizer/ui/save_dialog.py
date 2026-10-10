@@ -177,6 +177,7 @@ class SavePreviewDialog(PreviewDialog):
         exists: Callable[[Path], bool] = os.path.exists,
         fixer: SaveFixer | None = None,
         move_only: bool = False,
+        clean_tags: bool = False,
     ) -> None:
         super().__init__(
             "Opslaan: hernoemen en verplaatsen",
@@ -207,6 +208,16 @@ class SavePreviewDialog(PreviewDialog):
             "Ook niet-bewerkte tracks meenemen (naam normaliseren / naar de juiste map)", self
         )
         self.write_tags = QCheckBox("Tags bijwerken (artiest, titel, jaar)", self)
+        self.strip_tags = QCheckBox(
+            "Overige tags verwijderen: alleen artiest, titel en jaar blijven over "
+            "(MP3; terugdraaien zet de oude tags terug)",
+            self,
+        )
+        self.strip_tags.setEnabled(False)
+        self.write_tags.toggled.connect(self.strip_tags.setEnabled)
+        self.write_tags.toggled.connect(
+            lambda on: None if on else self.strip_tags.setChecked(False)
+        )
         self.cleanup = QCheckBox("Lege mappen opruimen na verplaatsen", self)
         self.keep_names = QCheckBox(
             "Bestandsnamen van niet-bewerkte tracks ongewijzigd laten (alleen verplaatsen)", self
@@ -216,6 +227,7 @@ class SavePreviewDialog(PreviewDialog):
         self._select(self.style_combo, settings.decade_style)
         self._select(self.collision_combo, settings.collision_policy)
         self.write_tags.setChecked(settings.write_tags)
+        self.strip_tags.setEnabled(self.write_tags.isChecked())
         self.cleanup.setChecked(settings.cleanup_empty_dirs)
         if move_only:  # menu 'Verplaatsen naar jaarmap'
             self.setWindowTitle("Verplaatsen naar jaarmap")
@@ -224,6 +236,13 @@ class SavePreviewDialog(PreviewDialog):
             self.include_unchanged.setChecked(True)
             self.keep_names.setChecked(True)
             self.write_tags.setChecked(False)
+        if clean_tags:  # menu 'Tags schrijven en opschonen'
+            self.setWindowTitle("Tags schrijven en opschonen")
+            self._select(self.template_combo, FolderTemplate.NONE.value)
+            self.include_unchanged.setChecked(True)
+            self.keep_names.setChecked(True)
+            self.write_tags.setChecked(True)
+            self.strip_tags.setChecked(True)
 
         folder_row = QHBoxLayout()
         folder_row.addWidget(self.template_combo)
@@ -237,6 +256,7 @@ class SavePreviewDialog(PreviewDialog):
         form.addRow("", self.include_unchanged)
         form.addRow("", self.keep_names)
         form.addRow("", self.write_tags)
+        form.addRow("", self.strip_tags)
         form.addRow("", self.cleanup)
         self.options_layout.addLayout(form)
 
@@ -275,7 +295,7 @@ class SavePreviewDialog(PreviewDialog):
 
         for combo in (self.template_combo, self.style_combo, self.collision_combo):
             combo.currentIndexChanged.connect(self.replan)
-        for box in (self.include_unchanged, self.write_tags, self.keep_names):
+        for box in (self.include_unchanged, self.write_tags, self.keep_names, self.strip_tags):
             box.toggled.connect(self.replan)
         self.unknown_edit.editingFinished.connect(self.replan)
         self.replan()
@@ -295,6 +315,7 @@ class SavePreviewDialog(PreviewDialog):
             write_tags=self.write_tags.isChecked(),
             include_unchanged=self.include_unchanged.isChecked(),
             keep_names=self.keep_names.isChecked(),
+            strip_tags=self.write_tags.isChecked() and self.strip_tags.isChecked(),
         )
 
     def replan(self) -> None:

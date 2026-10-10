@@ -7,6 +7,12 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Added
+- **Bestand → Tags schrijven en opschonen…** en de optie **Overige tags verwijderen** in de
+  opslaan-preview: alleen artiest, titel en jaar blijven in de tags staan; album, genre,
+  opmerkingen, hoes enz. vervallen. Voor MP3 (ID3) wordt de volledige oude tag eerst bewaard,
+  zodat terugdraaien alles herstelt; andere formaten krijgen alleen de drie tags bijgewerkt.
+
 ## [0.15.0] - 2026-10-10
 
 ### Added
