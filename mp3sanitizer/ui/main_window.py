@@ -253,6 +253,12 @@ class MainWindow(QMainWindow):
         self.act_save = QAction("&Opslaan…", self, shortcut=QKeySequence.StandardKey.Save)
         self.act_save.setToolTip("Hernoemen/verplaatsen via een preview (Ctrl+S)")
         self.act_save.triggered.connect(self.save_changes)
+        self.act_move_year = QAction("&Verplaatsen naar jaarmap…", self)
+        self.act_move_year.setToolTip(
+            "Bestanden naar een map per jaar (of decennium) verplaatsen, via een preview; "
+            "met meerdere rijen geselecteerd alleen die"
+        )
+        self.act_move_year.triggered.connect(self.move_to_year_folders)
         self.act_undo_batch = QAction("Laatste batch &terugdraaien…", self)
         self.act_undo_batch.triggered.connect(self.undo_last_batch)
         self.act_save_session = QAction("Sessie op&slaan…", self)
@@ -381,6 +387,7 @@ class MainWindow(QMainWindow):
         m_file.addAction(self.act_reload)
         m_file.addSeparator()
         m_file.addAction(self.act_save)
+        m_file.addAction(self.act_move_year)
         m_file.addAction(self.act_undo_batch)
         m_file.addSeparator()
         m_file.addAction(self.act_open_session)
@@ -1290,6 +1297,24 @@ class MainWindow(QMainWindow):
             return
         dialog.store_settings(self._settings)
         self._apply_folder_rule()
+        self.model.flag_duplicates(dialog.duplicate_ids())
+        self.start_save(dialog.selected_plans(), dialog.cleanup.isChecked())
+
+    def move_to_year_folders(self) -> None:
+        """Verplaats bestanden naar jaarmappen; met meerdere rijen geselecteerd alleen die."""
+        if self._root is None or not self._ensure_idle():
+            return
+        inputs = self.plan_inputs()
+        selected = self.table.selectionModel().selectedRows()
+        if len(selected) > 1:
+            ids = set(self.selected_track_ids())
+            inputs = [i for i in inputs if i.track_id in ids]
+        dialog = SavePreviewDialog(
+            inputs, self._root, self._settings, self, fixer=self, move_only=True
+        )
+        if not dialog.exec():
+            return
+        # Bewust geen store_settings: de gewone opslaan-instellingen blijven zoals ze waren.
         self.model.flag_duplicates(dialog.duplicate_ids())
         self.start_save(dialog.selected_plans(), dialog.cleanup.isChecked())
 

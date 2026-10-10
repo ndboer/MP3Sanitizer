@@ -924,6 +924,17 @@ story += [
             "vaak een duplicaat. Na bevestiging gaat het bronbestand naar de Prullenbak.",
         ]
     ),
+    h2("Verplaatsen naar jaarmap"),
+    p(
+        "<b>Bestand → Verplaatsen naar jaarmap…</b> opent dezelfde preview, maar ingesteld op "
+        "verplaatsen: alle tracks gaan naar een map per jaar (bijvoorbeeld "
+        f"{code('1985')}), of per decennium als je dat kiest. Met "
+        "<b>Bestandsnamen ongewijzigd laten</b> (standaard aan) houden niet-bewerkte tracks hun "
+        "huidige naam; bewerkte tracks krijgen hun nieuwe naam. Zijn er meerdere rijen "
+        "geselecteerd, dan worden alleen die verplaatst. Tracks zonder jaar gaan naar de map "
+        "voor onbekend jaar. Je gewone opslaan-instellingen veranderen hierdoor niet, en ook "
+        "deze batch is terug te draaien."
+    ),
     h2("Na het opslaan"),
     p(
         "Het opslaan draait op de achtergrond met voortgangsbalk; <i>Annuleren</i> kan tussendoor. "

@@ -7,6 +7,12 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Added
+- **Bestand → Verplaatsen naar jaarmap…**: bestanden naar een map per jaar (of decennium)
+  verplaatsen via de vertrouwde preview, met journaal en terugdraaien. Standaard blijven de
+  bestandsnamen van niet-bewerkte tracks ongewijzigd; met meerdere rijen geselecteerd worden
+  alleen die verplaatst.
+
 ### Fixed
 - Bandnamen met "&"/"and" binnen een samenwerking werden nog verdubbeld, bijv.
   "Billy Cotton & His Band, Alan Breeze" → "Billy Cotton & His Band & His Band, Alan Breeze".

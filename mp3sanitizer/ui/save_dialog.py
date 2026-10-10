@@ -176,6 +176,7 @@ class SavePreviewDialog(PreviewDialog):
         parent: QWidget | None = None,
         exists: Callable[[Path], bool] = os.path.exists,
         fixer: SaveFixer | None = None,
+        move_only: bool = False,
     ) -> None:
         super().__init__(
             "Opslaan: hernoemen en verplaatsen",
@@ -207,12 +208,22 @@ class SavePreviewDialog(PreviewDialog):
         )
         self.write_tags = QCheckBox("Tags bijwerken (artiest, titel, jaar)", self)
         self.cleanup = QCheckBox("Lege mappen opruimen na verplaatsen", self)
+        self.keep_names = QCheckBox(
+            "Bestandsnamen van niet-bewerkte tracks ongewijzigd laten (alleen verplaatsen)", self
+        )
 
         self._select(self.template_combo, settings.folder_template)
         self._select(self.style_combo, settings.decade_style)
         self._select(self.collision_combo, settings.collision_policy)
         self.write_tags.setChecked(settings.write_tags)
         self.cleanup.setChecked(settings.cleanup_empty_dirs)
+        if move_only:  # menu 'Verplaatsen naar jaarmap'
+            self.setWindowTitle("Verplaatsen naar jaarmap")
+            if settings.folder_template == FolderTemplate.NONE.value:
+                self._select(self.template_combo, FolderTemplate.YEAR.value)
+            self.include_unchanged.setChecked(True)
+            self.keep_names.setChecked(True)
+            self.write_tags.setChecked(False)
 
         folder_row = QHBoxLayout()
         folder_row.addWidget(self.template_combo)
@@ -224,6 +235,7 @@ class SavePreviewDialog(PreviewDialog):
         form.addRow(QLabel("&Doelmap:", self, buddy=self.template_combo), folder_row)
         form.addRow("&Bij botsing:", self.collision_combo)
         form.addRow("", self.include_unchanged)
+        form.addRow("", self.keep_names)
         form.addRow("", self.write_tags)
         form.addRow("", self.cleanup)
         self.options_layout.addLayout(form)
@@ -263,7 +275,7 @@ class SavePreviewDialog(PreviewDialog):
 
         for combo in (self.template_combo, self.style_combo, self.collision_combo):
             combo.currentIndexChanged.connect(self.replan)
-        for box in (self.include_unchanged, self.write_tags):
+        for box in (self.include_unchanged, self.write_tags, self.keep_names):
             box.toggled.connect(self.replan)
         self.unknown_edit.editingFinished.connect(self.replan)
         self.replan()
@@ -282,6 +294,7 @@ class SavePreviewDialog(PreviewDialog):
             collision=Collision(self.collision_combo.currentData()),
             write_tags=self.write_tags.isChecked(),
             include_unchanged=self.include_unchanged.isChecked(),
+            keep_names=self.keep_names.isChecked(),
         )
 
     def replan(self) -> None:

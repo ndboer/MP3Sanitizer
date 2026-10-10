@@ -70,6 +70,7 @@ class PlanOptions:
     collision: Collision = Collision.SKIP
     write_tags: bool = False
     include_unchanged: bool = False  # ook niet-bewerkte tracks normaliseren/verplaatsen
+    keep_names: bool = False  # niet-bewerkte tracks alleen verplaatsen, naam ongewijzigd
 
 
 def path_key(path: Path | str) -> str:
@@ -87,7 +88,10 @@ def target_stem(inp: PlanInput) -> str:
 
 
 def target_path(inp: PlanInput, opts: PlanOptions) -> Path:
-    name = target_stem(inp) + inp.src.suffix
+    if opts.keep_names and not inp.changed:
+        name = inp.src.name
+    else:
+        name = target_stem(inp) + inp.src.suffix
     folder = folder_for_year(inp.year, opts.folder_template, opts.decade_style, opts.unknown_folder)
     directory = inp.src.parent if folder is None else opts.root / folder
     return directory / name
