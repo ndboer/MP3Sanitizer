@@ -139,6 +139,8 @@ _SYMBOLS = "▶⇄★✕■"
 
 def glyphs(text: str) -> str:
     """Symbolen die Segoe UI niet heeft, in Segoe UI Symbol zetten."""
+    if not isinstance(text, str):  # ReportLab maakt bij het splitsen over pagina's P(None, ...)
+        return text
     for ch in _SYMBOLS:
         text = text.replace(ch, f'<font name="Sym">{ch}</font>')
     return text
