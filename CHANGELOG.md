@@ -7,6 +7,12 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Added
+- Artiestencontrole: **Jaren van … tot en met …** naast de beginletters; alleen tracks uit die
+  jaren worden gecontroleerd (de tellingen per letter passen zich aan).
+- **Naam corrigeren en opnieuw zoeken** heeft een optioneel **jaar**: per track wordt de opname
+  rond dat jaar gekozen, zodat bij artiesten met dezelfde naam de juiste wordt gevonden.
+
 ## [0.16.0] - 2026-10-10
 
 ### Added

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication
 from mp3sanitizer.core.musicbrainz import RecordingCandidate
 from mp3sanitizer.core.scanner import track_from_path
 from mp3sanitizer.core.settings import Settings
-from mp3sanitizer.ui.artist_review_dialog import ArtistReviewDialog, Col
+from mp3sanitizer.ui.artist_review_dialog import PROPOSAL_ROLE, ArtistReviewDialog, Col
 from mp3sanitizer.ui.track_model import TrackTableModel
 
 NAMES = [
@@ -229,3 +229,54 @@ def test_band_name_with_and_is_not_doubled(qapp, pool, tmp_path):
     _run(d, "A")
     d.apply_checked()
     assert m.edits.artist(0) == "Adam and the Ants"
+
+
+def test_year_filter_limits_letters_and_review(model, pool):
+    d, mb = _dialog(model, pool)
+    d.year_from.setValue(1960)
+    d.year_to.setValue(1970)
+    assert d.letter_buttons["B"].toolTip() == "1 artiesten, 2 tracks"
+    assert d.letter_buttons["N"].toolTip() == "1 artiesten, 1 tracks"  # alleen 1968
+    assert not d.letter_buttons["Q"].isEnabled()  # 1981
+    d.filter_combo.setCurrentIndex(1)
+    _run(d, "N")
+    assert {title for _, title in mb.calls} == {"Rainbow Chaser"}
+    d.year_from.setValue(1991)
+    d.year_to.setValue(1981)  # omgedraaid bereik werkt ook
+    assert d.year_range() == (1981, 1991)
+
+
+class YearMB:
+    """Twee groepen met dezelfde naam; welke opname 'wint' hangt af van het jaar."""
+
+    def search_recording(self, artist, title):
+        return [
+            rec(title, [("n68", "Nirvana")], 1968),
+            rec(title, [("n91", "Nirvana")], 1991),
+        ]
+
+
+def test_recheck_with_year_picks_artist_from_that_year(qapp, pool, tmp_path):
+    m = TrackTableModel()
+    m.undo_stack = QUndoStack()
+    m.append_tracks([track_from_path(0, tmp_path / "nirvana - Song.mp3", tmp_path)])
+    d, _ = _dialog(m, pool, mb=YearMB())
+    d.filter_combo.setCurrentIndex(1)
+    _run(d, "N")
+    d.recheck(_top(d, "nirvana"), "Nirvana", 1968)
+    wait_for(lambda: _top(d, "nirvana").text(Col.STATUS) == "Voorstel")
+    p = _top(d, "nirvana").data(Col.ARTIST, PROPOSAL_ROLE)
+    assert p.candidates[0].mbid == "n68"
+    d.recheck(_top(d, "nirvana"), "Nirvana", 1991)
+    wait_for(lambda: _top(d, "nirvana").data(Col.ARTIST, PROPOSAL_ROLE).candidates[0].mbid == "n91")
+
+
+def test_recheck_dialog_values(qapp):
+    from mp3sanitizer.core.artist_review import ArtistEntry, TrackRef
+    from mp3sanitizer.ui.artist_review_dialog import RecheckDialog
+
+    d = RecheckDialog(ArtistEntry("quien", [TrackRef(0, "quien", "x", 1981)]), "Queen")
+    assert d.values() == ("Queen", None)
+    d.name_edit.setText("  Queen  ")
+    d.year_edit.setText("1981")
+    assert d.values() == ("Queen", 1981)

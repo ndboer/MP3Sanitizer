@@ -663,6 +663,12 @@ story += [
             "juiste naam (“Queen”) en de tracks worden daarmee opnieuw opgezocht, zonder het "
             "venster te sluiten. Bij toepassen wordt “Quien &amp; David Bowie” dan "
             "“Queen &amp; David Bowie”: alleen die artiest wordt vervangen.",
+            "Geef daarbij eventueel een <b>jaar</b> op: per track wordt dan de opname rond dat "
+            "jaar gekozen. Handig bij verschillende artiesten met dezelfde naam (Nirvana uit "
+            "1968 of uit 1991).",
+            "Met <b>Jaren van … tot en met …</b> naast de letters controleer je alleen tracks "
+            "uit die jaren, bijvoorbeeld de jaren tachtig. Tracks zonder jaar tellen dan niet "
+            "mee; “–” betekent geen grens.",
             "<b>Toepassen op aangevinkte</b> voert alles door als één undo-stap. Goedgekeurde en "
             "<b>genegeerde</b> artiesten worden onthouden en volgende keer overgeslagen; een "
             "letter die helemaal klaar is krijgt een ✓.",

@@ -170,6 +170,15 @@ def letter_counts(
     return {letter: (len(artists[letter]), len(track_ids[letter])) for letter in LETTERS}
 
 
+def in_years(ref: TrackRef, start: int | None, end: int | None) -> bool:
+    """Valt de track binnen het jaarbereik? Zonder bereik altijd; zonder jaar dan niet."""
+    if start is None and end is None:
+        return True
+    if ref.year is None:
+        return False
+    return (start is None or ref.year >= start) and (end is None or ref.year <= end)
+
+
 # --- per track opzoeken ------------------------------------------------------------------
 
 
@@ -303,6 +312,7 @@ def recheck(
     entry: ArtistEntry,
     corrected: str,
     articles: Iterable[str] = DEFAULT_ARTICLES,
+    year: int | None = None,
 ) -> ArtistProposal | str:
     """Zoek de tracks van ``entry`` opnieuw op, met ``corrected`` in plaats van de huidige naam.
 
@@ -310,6 +320,9 @@ def recheck(
     gebruiker verbeterde naam ("Queen") wel. In samenwerkingen wordt alleen deze artiest
     vervangen. Het voorstel blijft bij de oorspronkelijke artiest horen, zodat toepassen
     "Quien" vervangt. Geeft een foutmelding terug als MusicBrainz onbereikbaar is.
+
+    Met ``year`` wordt bij alle tracks de opname gekozen die het dichtst bij dat jaar ligt,
+    zodat bij artiesten met dezelfde naam de juiste wordt gevonden (bijv. "Nirvana", 1968).
     """
     articles = tuple(articles)
     corrected = " ".join(corrected.split())
@@ -318,7 +331,7 @@ def recheck(
             t.track_id,
             replace_artist(t.artist, entry.name, corrected, articles) or corrected,
             t.title,
-            t.year,
+            t.year if year is None else year,
         )
         for t in entry.tracks
     ]

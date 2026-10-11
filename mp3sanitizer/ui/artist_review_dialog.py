@@ -12,19 +12,22 @@ from collections import defaultdict
 from collections.abc import Callable, Sequence
 
 from PySide6.QtCore import Qt, QThreadPool, Slot
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFormLayout,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
-    QInputDialog,
     QLabel,
+    QLineEdit,
     QMenu,
     QProgressBar,
     QPushButton,
+    QSpinBox,
     QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -40,6 +43,7 @@ from mp3sanitizer.core.artist_review import (
     Status,
     TrackRef,
     collect,
+    in_years,
     letter_counts,
     recheck,
     run_review,
@@ -95,6 +99,48 @@ def _years(entry: ArtistEntry) -> str:
     return str(span[0]) if span[0] == span[1] else f"{span[0]}–{span[1]}"
 
 
+class RecheckDialog(QDialog):
+    """Juiste naam (en eventueel een jaar) opgeven om een artiest opnieuw op te zoeken."""
+
+    def __init__(self, entry: ArtistEntry, proposal: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Naam corrigeren en opnieuw zoeken")
+        self.resize(540, 0)
+        self.name_edit = QLineEdit(proposal, self)
+        self.year_edit = QLineEdit(self)
+        self.year_edit.setPlaceholderText("optioneel, bijv. 1968")
+        self.year_edit.setValidator(QIntValidator(1000, 2100, self))
+        self.year_edit.setMaximumWidth(140)
+        span = "" if entry.years is None else f"; jaren in je collectie: {_years(entry)}"
+        info = QLabel(
+            f"Juiste schrijfwijze voor “{entry.name}” ({len(entry.tracks)} tracks{span}).\n"
+            "De tracks worden met deze naam opnieuw opgezocht; in samenwerkingen alleen deze "
+            "artiest.\nMet een jaar wordt per track de opname rond dat jaar gekozen, zodat bij "
+            "meerdere artiesten met dezelfde naam de juiste wordt gevonden.",
+            self,
+        )
+        info.setWordWrap(True)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("&Opnieuw zoeken")
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Annuleren")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        form = QFormLayout()
+        form.addRow("&Naam:", self.name_edit)
+        form.addRow("&Jaar:", self.year_edit)
+        layout = QVBoxLayout(self)
+        layout.addWidget(info)
+        layout.addLayout(form)
+        layout.addWidget(buttons)
+        self.name_edit.selectAll()
+
+    def values(self) -> tuple[str, int | None]:
+        year = self.year_edit.text().strip()
+        return " ".join(self.name_edit.text().split()), int(year) if year.isdigit() else None
+
+
 class ArtistReviewDialog(QDialog):
     def __init__(
         self,
@@ -131,6 +177,15 @@ class ArtistReviewDialog(QDialog):
             button.toggled.connect(self._update_selection_label)
             self.letter_buttons[letter] = button
             letters.addWidget(button, 0, i)
+        # Jaarfilter: alleen tracks uit deze jaren controleren ("–" = geen grens).
+        self.year_from = QSpinBox(self)
+        self.year_to = QSpinBox(self)
+        for box in (self.year_from, self.year_to):
+            box.setRange(0, 2100)
+            box.setSpecialValueText("–")
+            box.setValue(0)
+            box.setToolTip("– = geen grens; met een grens tellen tracks zonder jaar niet mee")
+            box.valueChanged.connect(self.refresh_letters)
         self.include_reviewed = QCheckBox("Ook eerder &beoordeelde artiesten", self)
         self.include_reviewed.toggled.connect(self.refresh_letters)
         self.selection_label = QLabel(self)
@@ -190,6 +245,11 @@ class ArtistReviewDialog(QDialog):
         close.rejected.connect(self.reject)
 
         top = QHBoxLayout()
+        top.addWidget(QLabel("&Jaren van", self, buddy=self.year_from))
+        top.addWidget(self.year_from)
+        top.addWidget(QLabel("tot en met", self))
+        top.addWidget(self.year_to)
+        top.addSpacing(16)
         top.addWidget(self.include_reviewed)
         top.addStretch(1)
         top.addWidget(self.selection_label)
@@ -225,10 +285,22 @@ class ArtistReviewDialog(QDialog):
     def track_refs(self) -> list[TrackRef]:
         m, e = self.model, self.model.edits
         return [
-            TrackRef(t.id, e.artist(t.id), e.title(t.id), e.year(t.id))
+            ref
             for t in m.tracks
             if not m.is_deleted_id(t.id) and e.artist(t.id).strip()
+            if in_years(
+                ref := TrackRef(t.id, e.artist(t.id), e.title(t.id), e.year(t.id)),
+                *self.year_range(),
+            )
         ]
+
+    def year_range(self) -> tuple[int | None, int | None]:
+        """Het ingestelde jaarbereik; ``None`` = geen grens."""
+        start = self.year_from.value() or None
+        end = self.year_to.value() or None
+        if start is not None and end is not None and start > end:
+            start, end = end, start
+        return start, end
 
     def _skip(self) -> set[str]:
         return set() if self.include_reviewed.isChecked() else set(self._settings.artist_review)
@@ -541,18 +613,13 @@ class ArtistReviewDialog(QDialog):
         if top is None:
             return
         p: ArtistProposal = top.data(Col.ARTIST, PROPOSAL_ROLE)
-        name, ok = QInputDialog.getText(
-            self,
-            "Naam corrigeren",
-            f"Juiste schrijfwijze voor “{p.entry.name}” ({len(p.entry.tracks)} tracks).\n"
-            "De tracks worden met deze naam opnieuw opgezocht; in samenwerkingen alleen "
-            "deze artiest.",
-            text=top.text(Col.PROPOSAL),
-        )
-        if ok and name.strip():
-            self.recheck(top, name)
+        dialog = RecheckDialog(p.entry, top.text(Col.PROPOSAL), self)
+        if dialog.exec():
+            name, year = dialog.values()
+            if name:
+                self.recheck(top, name, year)
 
-    def recheck(self, top: QTreeWidgetItem, corrected: str) -> None:
+    def recheck(self, top: QTreeWidgetItem, corrected: str, year: int | None = None) -> None:
         """Zoek één artiest opnieuw op met een verbeterde naam; het venster blijft open."""
         p: ArtistProposal = top.data(Col.ARTIST, PROPOSAL_ROLE)
         corrected = " ".join(corrected.split())
@@ -561,7 +628,7 @@ class ArtistReviewDialog(QDialog):
         entry = p.entry
         self.jobs.run(
             f"recheck:{entry.name}",
-            FunctionWorker(recheck, self._client_factory(), entry, corrected, self._articles),
+            FunctionWorker(recheck, self._client_factory(), entry, corrected, self._articles, year),
             lambda result, name=entry.name: self._on_recheck(name, result),
         )
 
