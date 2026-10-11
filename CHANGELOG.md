@@ -7,6 +7,8 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-11
+
 ### Added
 - Artiestencontrole: **Jaren van … tot en met …** naast de beginletters; alleen tracks uit die
   jaren worden gecontroleerd (de tellingen per letter passen zich aan).
