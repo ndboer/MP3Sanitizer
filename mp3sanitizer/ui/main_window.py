@@ -378,7 +378,9 @@ class MainWindow(QMainWindow):
         tb.addWidget(self.filter_combo)
         tb.addSeparator()
         self.search_edit = QLineEdit(self)
-        self.search_edit.setPlaceholderText("Zoeken in artiest, titel, bestandsnaam (Ctrl+F)")
+        self.search_edit.setPlaceholderText(
+            'Zoeken: alle woorden moeten voorkomen; "woordgroep" tussen aanhalingstekens (Ctrl+F)'
+        )
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.setMinimumWidth(240)
         self.search_edit.textChanged.connect(lambda _: self._search_timer.start())

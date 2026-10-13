@@ -238,7 +238,7 @@ class TrackTableModel(QAbstractTableModel):
         return self._misplaced[self._order[row]]
 
     def search_key(self, row: int) -> str:
-        """Gevouwen 'artiest\\0titel\\0bestandsnaam' voor het zoekfilter."""
+        """Gevouwen 'artiest\\0titel\\0jaar\\0map\\0bestandsnaam' voor het zoekfilter."""
         return self._search_keys[self._order[row]]
 
     def is_duplicate(self, row: int) -> bool:
@@ -426,7 +426,11 @@ class TrackTableModel(QAbstractTableModel):
         artist, title = e.artist(tid), e.title(tid)
         self._artist_keys[tid] = natural_key(sort_key(artist, self._articles))
         self._title_keys[tid] = natural_key(fold(title))
-        self._search_keys[tid] = fold(f"{artist}\x00{title}\x00{self._tracks[tid].filename}")
+        track, year = self._tracks[tid], e.year(tid)
+        self._search_keys[tid] = fold(
+            f"{artist}\x00{title}\x00{'' if year is None else year}\x00{track.folder}"
+            f"\x00{track.filename}"
+        )
         issues = {}
         for field, text in ((Field.ARTIST, artist), (Field.TITLE, title)):
             found = text_issues(text)

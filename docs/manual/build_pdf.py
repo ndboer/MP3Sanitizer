@@ -489,8 +489,13 @@ story += h1("5. Filteren en zoeken")
 story += [
     p(
         "Het <b>snelfilter</b> in de werkbalk (of <i>Beeld → Filter</i>) beperkt de tabel tot een "
-        "bepaalde groep. Het <b>zoekveld</b> zoekt tegelijk in artiest, titel en bestandsnaam, "
-        "zonder op hoofdletters of accenten te letten."
+        "bepaalde groep. Het <b>zoekveld</b> zoekt tegelijk in artiest, titel, jaar, map en "
+        "bestandsnaam, zonder op hoofdletters of accenten te letten. <b>Alle woorden moeten "
+        f"voorkomen</b>: {code('queen 1991')} toont alleen tracks met zowel “queen” als "
+        "“1991”. Een woord mag ook een deel van een woord zijn (“beat” vindt “Beatles”). Zet "
+        f"een woordgroep tussen aanhalingstekens om die als geheel te zoeken: "
+        f"{code(chr(34) + 'under pressure' + chr(34))}. Het filterveld in de previews werkt "
+        "op dezelfde manier."
     ),
     table(
         [

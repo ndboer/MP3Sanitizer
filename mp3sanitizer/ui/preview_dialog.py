@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
 )
 
 from mp3sanitizer.core.diff import Seg, Segments, diff_segments
+from mp3sanitizer.core.normalize import fold, matches_all, search_terms
 from mp3sanitizer.ui.track_model import ERROR_COLOR, WARNING_COLOR
 
 REMOVED_BACKGROUND = QColor(220, 40, 40, 90)
@@ -197,11 +198,12 @@ class PreviewModel(QAbstractTableModel):
 class PreviewFilterProxy(QSortFilterProxyModel):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._text = ""
+        self._terms: tuple[str, ...] = ()
         self._only_notes = False
 
     def set_text(self, text: str) -> None:
-        self._text = text.casefold()
+        """Alle woorden moeten voorkomen (AND); "tussen aanhalingstekens" is één geheel."""
+        self._terms = search_terms(text)
         self.invalidate()
 
     def set_only_notes(self, value: bool) -> None:
@@ -214,9 +216,9 @@ class PreviewFilterProxy(QSortFilterProxyModel):
         item = model.items[source_row]
         if self._only_notes and item.level is Level.OK:
             return False
-        if self._text:
-            hay = f"{item.label}\x00{item.old}\x00{item.new}\x00{item.note}".casefold()
-            return self._text in hay
+        if self._terms:
+            hay = fold(f"{item.label}\x00{item.old}\x00{item.new}\x00{item.note}")
+            return matches_all(self._terms, hay)
         return True
 
 

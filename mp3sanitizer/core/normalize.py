@@ -86,3 +86,25 @@ def loose_equal(a: str | None, b: str | None) -> bool:
     if a is None or b is None:
         return a == b
     return fold(a.translate(_QUOTES)) == fold(b.translate(_QUOTES))
+
+
+_TERM = re.compile(r'"([^"]*)"?|(\S+)')
+
+
+def search_terms(text: str) -> tuple[str, ...]:
+    """Zoekinvoer → termen die allemaal moeten voorkomen (AND), gevouwen.
+
+    Losse woorden zijn aparte termen; tekst tussen aanhalingstekens is één term
+    (``"under pressure"``). Een term mag ook een deel van een woord zijn.
+    """
+    terms = []
+    for quoted, word in _TERM.findall(text):
+        term = fold(quoted if quoted or not word else word)
+        if term:
+            terms.append(term)
+    return tuple(dict.fromkeys(terms))
+
+
+def matches_all(terms: Iterable[str], haystack: str) -> bool:
+    """Komen alle (gevouwen) termen voor in de (gevouwen) tekst?"""
+    return all(term in haystack for term in terms)

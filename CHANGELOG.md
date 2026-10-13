@@ -7,6 +7,11 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Changed
+- Zoekveld en filter in de previews: alle ingevoerde woorden moeten voorkomen (AND), ook als
+  deel van een woord; "woordgroep" tussen aanhalingstekens wordt als geheel gezocht. Het
+  zoekveld zoekt nu ook in jaar en map.
+
 ## [0.17.0] - 2026-10-11
 
 ### Added

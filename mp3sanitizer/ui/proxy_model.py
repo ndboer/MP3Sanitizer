@@ -7,7 +7,7 @@ from enum import StrEnum
 from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QSortFilterProxyModel, Qt
 
 from mp3sanitizer.core.models import ParseStatus
-from mp3sanitizer.core.normalize import fold
+from mp3sanitizer.core.normalize import matches_all, search_terms
 from mp3sanitizer.ui.track_model import TrackTableModel
 
 
@@ -55,7 +55,7 @@ class TrackFilterProxy(QSortFilterProxyModel):
         super().__init__(parent)
         self.setDynamicSortFilter(False)
         self._quick = QuickFilter.ALL
-        self._text = ""
+        self._terms: tuple[str, ...] = ()
 
     def refresh(self) -> None:
         self._begin_filter_change()
@@ -78,10 +78,11 @@ class TrackFilterProxy(QSortFilterProxyModel):
             self._end_filter_change()
 
     def set_text_filter(self, text: str) -> None:
-        text = fold(text)
-        if text != self._text:
+        """Alle woorden moeten voorkomen (AND); "tussen aanhalingstekens" is één geheel."""
+        terms = search_terms(text)
+        if terms != self._terms:
             self._begin_filter_change()
-            self._text = text
+            self._terms = terms
             self._end_filter_change()
 
     def _begin_filter_change(self) -> None:
@@ -124,4 +125,4 @@ class TrackFilterProxy(QSortFilterProxyModel):
             case QuickFilter.DUPLICATES:
                 if not model.is_duplicate(source_row):
                     return False
-        return not self._text or self._text in model.search_key(source_row)
+        return not self._terms or matches_all(self._terms, model.search_key(source_row))
