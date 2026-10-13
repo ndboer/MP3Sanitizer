@@ -43,6 +43,7 @@ from PySide6.QtWidgets import (
 
 from mp3sanitizer.core.diff import Seg, Segments, diff_segments
 from mp3sanitizer.core.normalize import fold, matches_all, search_terms
+from mp3sanitizer.ui.empty_notice import EmptyNotice, quoted
 from mp3sanitizer.ui.track_model import ERROR_COLOR, WARNING_COLOR
 
 REMOVED_BACKGROUND = QColor(220, 40, 40, 90)
@@ -341,6 +342,9 @@ class PreviewDialog(QDialog):
         layout.addLayout(self.options_layout)
         layout.addWidget(self.buttons)
 
+        self.empty_notice = EmptyNotice(self.table, self.empty_message)
+        self.filter_edit.textChanged.connect(lambda _: self.empty_notice.refresh())
+        self.only_notes.toggled.connect(lambda _: self.empty_notice.refresh())
         self.model.checkedChanged.connect(self._update_count)
         self._update_count()
         self.table.setFocus()
@@ -364,6 +368,20 @@ class PreviewDialog(QDialog):
             rows = [self.table.currentIndex().row()]
         items = self.model.items
         return [items[self.proxy.mapToSource(self.proxy.index(r, 0)).row()].key for r in rows]
+
+    def empty_message(self) -> str | None:
+        """Tekst in plaats van de tabel als er geen regels te zien zijn."""
+        if self.proxy.rowCount():
+            return None
+        if not self.model.items:
+            return "Er is niets te doen: geen wijzigingen voor deze instellingen."
+        text = " ".join(self.filter_edit.text().split())
+        message = "Het filter heeft geen regels opgeleverd"
+        if text:
+            message += f" voor {quoted(text)}"
+        if self.only_notes.isChecked():
+            message += "\n(alleen regels met opmerkingen)"
+        return message + "."
 
     def checked_keys(self) -> list[Hashable]:
         return [i.key for i in self.model.items if i.checkable and i.checked]

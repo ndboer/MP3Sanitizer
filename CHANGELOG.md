@@ -7,6 +7,12 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
+### Changed
+- Levert een filter geen rijen op, dan staat er in plaats van een lege tabel een melding op
+  een iets donkerdere achtergrond, met het actieve filter (zoekterm en snelfilter). Zo ook in
+  de previews, bij artiesten zoeken en in de artiestencontrole, en als er nog geen muziek is
+  ingelezen.
+
 ## [0.18.0] - 2026-10-13
 
 ### Changed

@@ -50,6 +50,7 @@ from mp3sanitizer.core.artist_review import (
 )
 from mp3sanitizer.core.normalize import DEFAULT_ARTICLES, fold
 from mp3sanitizer.core.settings import Settings
+from mp3sanitizer.ui.empty_notice import EmptyNotice
 from mp3sanitizer.ui.track_model import ERROR_COLOR, TrackTableModel
 from mp3sanitizer.ui.workers import FunctionWorker, JobRunner, Worker
 
@@ -217,6 +218,7 @@ class ArtistReviewDialog(QDialog):
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._context_menu)
         self.tree.itemChanged.connect(self._on_item_changed)
+        self.empty_notice = EmptyNotice(self.tree, self.empty_message)
 
         self.apply_button = QPushButton("&Toepassen op aangevinkte", self)
         self.apply_button.setToolTip(
@@ -363,6 +365,7 @@ class ArtistReviewDialog(QDialog):
         worker.signals.error.connect(self._on_error)
         worker.signals.finished.connect(self._on_finished)
         self._worker = worker
+        self.empty_notice.refresh()
         self.cancel_button.setEnabled(True)
         self._update_selection_label()
         for button in self.letter_buttons.values():
@@ -387,6 +390,7 @@ class ArtistReviewDialog(QDialog):
     @Slot(bool)
     def _on_finished(self, cancelled: bool) -> None:
         self._worker = None
+        self.empty_notice.refresh()
         self.cancel_button.setEnabled(False)
         self.progress.setVisible(False)
         if cancelled:
@@ -456,13 +460,29 @@ class ArtistReviewDialog(QDialog):
         self._items[entry.name] = top
         self._apply_filter_to(top)
         self._update_buttons()
+        self.empty_notice.refresh()
         return top
 
     # --- filter en knoppen ----------------------------------------------------------------
+    def empty_message(self) -> str | None:
+        """Tekst in plaats van de lijst als er geen artiesten te zien zijn."""
+        total = self.tree.topLevelItemCount()
+        if any(not self.tree.topLevelItem(i).isHidden() for i in range(total)):
+            return None
+        if self._worker is not None:
+            return "Controleren… de eerste resultaten verschijnen zodra een artiest klaar is."
+        if not total:
+            return "Kies één of meer beginletters en klik op Controleren."
+        return (
+            f"Het filter heeft geen artiesten opgeleverd\n"
+            f"(Toon: {self.filter_combo.currentText()}; {total} artiesten verborgen)."
+        )
+
     def apply_filter(self) -> None:
         for i in range(self.tree.topLevelItemCount()):
             self._apply_filter_to(self.tree.topLevelItem(i))
         self._update_buttons()
+        self.empty_notice.refresh()
 
     def _apply_filter_to(self, item: QTreeWidgetItem) -> None:
         statuses = _FILTERS[self.filter_combo.currentIndex()][1]
@@ -539,6 +559,7 @@ class ArtistReviewDialog(QDialog):
             self.tree.takeTopLevelItem(self.tree.indexOfTopLevelItem(item))
             self._items.pop(p.entry.name, None)
         self._update_buttons()
+        self.empty_notice.refresh()
         if self._worker is None:
             self.refresh_letters()
 

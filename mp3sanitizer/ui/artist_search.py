@@ -36,6 +36,7 @@ from mp3sanitizer.core.fuzzy import (
 )
 from mp3sanitizer.core.musicbrainz import ArtistCandidate, MusicBrainzClient, MusicBrainzError
 from mp3sanitizer.core.normalize import DEFAULT_ARTICLES, natural_key, sort_key
+from mp3sanitizer.ui.empty_notice import EmptyNotice, quoted
 from mp3sanitizer.ui.track_model import ERROR_COLOR, TrackTableModel
 from mp3sanitizer.ui.workers import FunctionWorker, JobRunner
 
@@ -236,6 +237,7 @@ class ArtistDialog(QDialog):
         self.apply_button = QPushButton("&Toepassen", tab)
         self.apply_button.clicked.connect(self.apply_search)
         self.search_status = QLabel(tab)
+        self.results_notice = EmptyNotice(self.results, self._results_message)
 
         top = QHBoxLayout()
         top.addWidget(QLabel("&Zoek:", tab, buddy=self.query_edit))
@@ -330,6 +332,17 @@ class ArtistDialog(QDialog):
         return {a: len(ids) for a, ids in self._index.items()}
 
     # --- zoeken --------------------------------------------------------------------------
+    def _results_message(self) -> str | None:
+        if self.results.topLevelItemCount():
+            return None
+        query = " ".join(self.query_edit.text().split())
+        if not query:
+            return "Typ een artiest om te zoeken."
+        return (
+            f"Geen artiesten gevonden voor {quoted(query)}\n"
+            f"(drempel {self.threshold_slider.value()}; verlaag de drempel voor meer resultaten)."
+        )
+
     def _on_threshold(self, value: int, search: bool = True) -> None:
         self.threshold_label.setText(str(value))
         if search:
@@ -341,6 +354,7 @@ class ArtistDialog(QDialog):
             self.results.clear()
             self.search_status.setText("Typ een artiest om te zoeken.")
             self._update_apply_button()
+            self.results_notice.refresh()
             return
         worker = FunctionWorker(
             search_artists, query, self.counts(), self.threshold_slider.value(), self._articles
@@ -374,6 +388,7 @@ class ArtistDialog(QDialog):
             self.results.addTopLevelItem(group)
             total += m.count
         self.results.blockSignals(False)
+        self.results_notice.refresh()
         self.search_status.setText(
             f"{len(matches)} schrijfwijzen, {total} tracks" if matches else "Geen resultaten."
         )

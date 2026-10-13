@@ -495,7 +495,8 @@ story += [
         "“1991”. Een woord mag ook een deel van een woord zijn (“beat” vindt “Beatles”). Zet "
         f"een woordgroep tussen aanhalingstekens om die als geheel te zoeken: "
         f"{code(chr(34) + 'under pressure' + chr(34))}. Het filterveld in de previews werkt "
-        "op dezelfde manier."
+        "op dezelfde manier. Levert het filter niets op, dan verdwijnt de tabel en staat er "
+        "een melding met de zoekterm en het snelfilter, zodat je ziet waarom er niets is."
     ),
     table(
         [

@@ -66,6 +66,7 @@ from mp3sanitizer.ui.corrections_dialog import CorrectionsDialog, Scope
 from mp3sanitizer.ui.delegates import TrackEditDelegate
 from mp3sanitizer.ui.delete_dialog import DeleteDialog
 from mp3sanitizer.ui.duplicates_view import DuplicatesDialog
+from mp3sanitizer.ui.empty_notice import EmptyNotice, quoted
 from mp3sanitizer.ui.player import SEEK_STEP_MS, MiniPlayer, Player, next_in_selection
 from mp3sanitizer.ui.proxy_model import QuickFilter, TrackFilterProxy
 from mp3sanitizer.ui.recording_dialog import RecordingDialog
@@ -149,6 +150,7 @@ class MainWindow(QMainWindow):
 
         self.table = QTableView(self)
         self._setup_table()
+        self.empty_notice = EmptyNotice(self.table, self.empty_message)
         self.player = Player(self)
         self.mini_player = MiniPlayer(self.player, self)
         central = QWidget(self)
@@ -527,11 +529,31 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(title)
 
     # --- filters -------------------------------------------------------------------------
+    def empty_message(self) -> str | None:
+        """Tekst in plaats van de tabel als er geen rijen te zien zijn."""
+        if self.proxy.rowCount():
+            return None
+        if self.model.rowCount() == 0:
+            if self._root is None:
+                return "Nog geen muziek ingelezen.\nKies Bestand → Map openen (Ctrl+O)."
+            if self._scan_worker is not None:
+                return "Bezig met inlezen…"
+            return f"Geen audiobestanden gevonden in\n{self._root}"
+        text = " ".join(self.search_edit.text().split())
+        quick = self.proxy.quick_filter
+        message = "Het filter heeft geen tracks opgeleverd"
+        if text:
+            message += f" voor {quoted(text)}"
+        if quick is not QuickFilter.ALL:
+            message += f"\n(snelfilter: {quick.label})"
+        return message + "."
+
     def set_quick_filter(self, value: QuickFilter) -> None:
         if value is QuickFilter.DUPLICATES:
             self.refresh_duplicate_filter()  # altijd met de actuele waarden
         self.proxy.set_quick_filter(value)
         self.filter_actions[value].setChecked(True)
+        self.empty_notice.refresh()
         index = self.filter_combo.findData(value.value)
         if index != self.filter_combo.currentIndex():
             self.filter_combo.setCurrentIndex(index)
@@ -539,6 +561,7 @@ class MainWindow(QMainWindow):
 
     def _apply_search(self) -> None:
         self.proxy.set_text_filter(self.search_edit.text())
+        self.empty_notice.refresh()
         self._schedule_stats()
 
     def _focus_search(self) -> None:
@@ -1213,6 +1236,7 @@ class MainWindow(QMainWindow):
             return
         self._scan_worker = None
         self.model.resort()
+        self.empty_notice.refresh()
         count = self.model.rowCount()
         if cancelled:
             self._pending_project = None
